@@ -452,11 +452,13 @@ def test_verifier_mount(api_dirs: dict[str, Path], store: Any) -> None:
         data_dir=api_dirs["data_dir"],
         scenarios_dir=api_dirs["scenarios_dir"],
     )
-    # Test without verifier/static
-    app_no_v = create_app(settings=settings, store=store)
-    with TestClient(app_no_v) as c:
+    # The verifier static directory ships with the package since C09 merged, so the
+    # default app serves it; the app must still start either way.
+    app_default = create_app(settings=settings, store=store)
+    static_dir_exists = (Path(flood.__file__).parent / "verifier" / "static").is_dir()
+    with TestClient(app_default) as c:
         resp = c.get("/verifier/")
-        assert resp.status_code == 404
+        assert resp.status_code == (200 if static_dir_exists else 404)
 
     # Test with verifier/static
     static_dir = Path(flood.__file__).parent / "verifier" / "static"

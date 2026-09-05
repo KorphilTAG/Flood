@@ -107,7 +107,16 @@ def test_verifier_server_routes():
     assert "#map" in resp_css.text
 
     # Check routes in app
-    app_paths = {route.path for route in getattr(app, "routes", [])}
+    def _collect_paths(routes: list) -> set[str]:
+        paths: set[str] = set()
+        for route in routes:
+            path = getattr(route, "path", None)
+            if isinstance(path, str):
+                paths.add(path)
+            paths |= _collect_paths(getattr(route, "routes", []))
+        return paths
+
+    app_paths = _collect_paths(getattr(app, "routes", []))
     for template in CONTRACT_PATHS:
         # Strip query string and normalize param names
         base_path = template.split("?")[0]
