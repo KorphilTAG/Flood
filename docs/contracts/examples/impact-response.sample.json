@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "run_id": "kerr-2025-07-04-replay-a1b2c3",
+  "p": "2025-07-04T06:10:00Z",
+  "t": "2025-07-04T06:15:00Z",
+  "velocity_is_proxy": true,
+  "facts": [
+    {
+      "feature_ref": "crossing:cr-17",
+      "kind": "impassable",
+      "impacted_now": false,
+      "depth_max_m": 0.09,
+      "depth_mean_m": 0.09,
+      "wet_fraction": 1.0,
+      "hazard_dv_max_m2_per_s": 0.12,
+      "attributes": { "road_name": "Example Road" },
+      "first_impacted_t": "2025-07-04T06:45:00Z",
+      "projections": [
+        { "t": "2025-07-04T06:45:00Z", "impacted": true },
+        { "t": "2025-07-04T07:15:00Z", "impacted": true },
+        { "t": "2025-07-04T08:15:00Z", "impacted": true }
+      ]
+    }
+  ],
+  "egress": [
+    {
+      "site_ref": "site:camp-4",
+      "route_refs": ["road:seg-17"],
+      "status": "blocked",
+      "first_blocked_t": "2025-07-04T06:45:00Z"
+    }
+  ],
+  "reaches": [
+    {
+      "reach_ref": "reach:3586192",
+      "stage_mid_m": 2.31,
+      "rate_of_rise_m_per_h": 0.42,
+      "velocity_ms": 1.17,
+      "source": "routed"
+    }
+  ]
+}
