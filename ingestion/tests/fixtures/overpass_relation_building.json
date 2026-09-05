@@ -1,0 +1,44 @@
+{
+  "version": 0.6,
+  "generator": "synthetic fixture -- not a real Overpass response",
+  "elements": [
+    {
+      "type": "relation",
+      "id": 900000001,
+      "tags": {
+        "building": "yes",
+        "type": "multipolygon"
+      },
+      "members": [
+        {
+          "type": "way",
+          "ref": 100000001,
+          "role": "outer",
+          "geometry": [
+            {"lat": 30.0, "lon": -99.0},
+            {"lat": 30.0, "lon": -98.9},
+            {"lat": 30.1, "lon": -98.9}
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 100000002,
+          "role": "outer",
+          "geometry": [
+            {"lat": 30.1, "lon": -98.9},
+            {"lat": 30.1, "lon": -99.0},
+            {"lat": 30.0, "lon": -99.0}
+          ]
+        }
+      ]
+    },
+    {
+      "type": "relation",
+      "id": 900000002,
+      "tags": {
+        "building": "yes"
+      },
+      "members": []
+    }
+  ]
+}

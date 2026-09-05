@@ -1,0 +1,15 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: flood
+      POSTGRES_USER: flood
+      POSTGRES_PASSWORD: flood
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./ingestion/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+
+volumes:
+  postgis_data:
