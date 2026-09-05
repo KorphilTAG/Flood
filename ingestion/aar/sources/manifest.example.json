@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "documents": [
+    {
+      "document_id": "replace-tx-house-senate-committee",
+      "source_category": "tx_house_senate_committee",
+      "title": "Replace with manually verified title",
+      "publisher": "Replace with manually verified publisher",
+      "canonical_url": "https://replace.example/authoritative-document",
+      "local_pdf_path": "../../../data/aar/sources/replace-tx-house-senate-committee.pdf",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "pending",
+      "verified_by": "replace with curator identity",
+      "verified_at": "2026-01-01T00:00:00Z",
+      "verification_note": "Replace after manual source and checksum verification.",
+      "annotations": [
+        {
+          "page_start": 1,
+          "page_end": 1,
+          "hazard": null,
+          "phase": null,
+          "tactic": null,
+          "resources": null,
+          "outcome": null,
+          "lesson": null
+        }
+      ]
+    },
+    {
+      "document_id": "replace-kerr-hmp-2024",
+      "source_category": "kerr_hmp_2024",
+      "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/kerr-hmp", "local_pdf_path": "../../../data/aar/sources/replace-kerr-hmp-2024.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-kerr-eop", "source_category": "kerr_eop", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/kerr-eop", "local_pdf_path": "../../../data/aar/sources/replace-kerr-eop.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-nws-service-assessment", "source_category": "nws_service_assessment", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/nws-assessment", "local_pdf_path": "../../../data/aar/sources/replace-nws-service-assessment.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-usgs-post-flood-report", "source_category": "usgs_post_flood_report", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/usgs-report", "local_pdf_path": "../../../data/aar/sources/replace-usgs-post-flood-report.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-fema-ipaws-records", "source_category": "fema_ipaws_records", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/fema-ipaws", "local_pdf_path": "../../../data/aar/sources/replace-fema-ipaws-records.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-wimberley-2015-aar", "source_category": "wimberley_2015_aar", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/wimberley-aar", "local_pdf_path": "../../../data/aar/sources/replace-wimberley-2015-aar.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-houston-2016-aar", "source_category": "houston_2016_aar", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/houston-aar", "local_pdf_path": "../../../data/aar/sources/replace-houston-2016-aar.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    },
+    {
+      "document_id": "replace-llano-2018-aar", "source_category": "llano_2018_aar", "title": "Replace with manually verified title", "publisher": "Replace with manually verified publisher", "canonical_url": "https://replace.example/llano-aar", "local_pdf_path": "../../../data/aar/sources/replace-llano-2018-aar.pdf", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "status": "pending", "verified_by": "replace with curator identity", "verified_at": "2026-01-01T00:00:00Z", "verification_note": "Replace after manual verification."
+    }
+  ]
+}
