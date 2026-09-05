@@ -2,7 +2,7 @@
 
 Flood digital twin with an outcome-grounded tactical critic — dnhacks, September 2026.
 
-Reference scenario: the Guadalupe River flash flood of 4 July 2025 in Kerr County, Texas. The product replays that timeline and critiques tactical decisions (training mode) or red-teams a draft incident action plan (pre-deployment mode) against projected inundation and an after-action-report corpus. It is not a live tactical recommender — a human commander owns every operational decision.
+Reference scenario: the Guadalupe River flash flood of 4 July 2025 in Kerr County, Texas. The product supports training (Kerr County replay with cited tactical critique) and live rescue (real-time inundation plus outcome-grounded critique during an active response). A human commander owns every operational decision — the system critiques and synthesizes; it does not issue dispatch orders.
 
 See [architecture.md](architecture.md) for the full design: problem statement, competitive landscape, design principles, and system architecture. Requirements live in [PRD.md](PRD.md). Team work split is only in [FeatureBreakdown.md](FeatureBreakdown.md).
 
@@ -15,4 +15,4 @@ Decisions are recorded one per file in [docs/decisions](decisions/README.md).
 
 ## Status
 
-Scope (training/tactical-critic replay vs. live rescue decision-support) is still being finalized among the team as of 2026-09-05.
+Positioning is training and live-rescue decision support (see [PRD.md](PRD.md)).

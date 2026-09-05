@@ -9,9 +9,9 @@ Kerr County's failure was a decision-latency failure, not a data failure. A floo
 The product addresses that gap in two settings where a human commander still owns every operational decision:
 
 1. Training: a trainee runs the Kerr County timeline, makes tactical choices at fixed decision points, and is critiqued against what those choices cost in comparable historical incidents.
-2. Pre-deployment: a draft incident action plan is red-teamed against the projected inundation and the after-action-report (AAR) corpus before a strike team leaves.
+2. Live rescue: during an active flood response, an incident commander or EOC staff uses the live twin (real-time inundation + cited AAR critique) to stress-test proposed tactics against projected inundation and historical outcomes while the operation is underway.
 
-It is explicitly not a live tactical recommender for incident commanders. That positioning is what makes it buildable, defensible, and usable by a rural county tomorrow.
+It is decision support, not autonomous dispatch — the system critiques and synthesizes; a human commander issues every operational order. That boundary is what keeps it buildable, defensible, and usable by a rural county tomorrow.
 
 ## 2. What exists and what does not
 

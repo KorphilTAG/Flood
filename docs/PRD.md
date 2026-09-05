@@ -3,7 +3,7 @@
 
 **Scope:** Flood only. Reference scenario: Guadalupe River flash flood, Kerr County, Texas, 4 July 2025.
 **Status:** Hackathon build (dnhacks, September 2026)
-**Positioning:** Training and pre-deployment red-team tool. **Not** a live tactical recommender — a human commander owns every operational decision.
+**Positioning:** Training and live-rescue decision-support tool. A human commander owns every operational decision — the system critiques and synthesizes; it does not issue dispatch orders.
 
 ---
 
@@ -13,7 +13,7 @@ Kerr County's failure on 4 July 2025 was a decision-latency failure, not a data 
 
 This product closes that synthesis gap in two settings:
 1. **Training** — a trainee runs the Kerr County timeline, makes tactical decisions at fixed decision points, and is critiqued against what comparable choices cost in historical incidents.
-2. **Pre-deployment** — a draft incident action plan (IAP) is red-teamed against projected inundation and the after-action-report (AAR) corpus before a strike team leaves.
+2. **Live rescue** — during an active flood response, an incident commander or EOC staff uses the live twin (real-time inundation + cited AAR critique) to stress-test proposed tactics against projected inundation and historical outcomes while the operation is underway.
 
 ---
 
@@ -26,7 +26,7 @@ This product closes that synthesis gap in two settings:
 - Support both replay (historical Kerr County timeline) and live (real-time gauge feed) modes
 
 **Non-Goals**
-- Not a live incident-command recommender — outputs are training/critique artifacts, not dispatch instructions
+- Not an autonomous dispatcher — outputs are decision-support and critique for a human commander, never machine-issued dispatch or evacuation orders
 - Not a trained hydrology model as the primary inundation method — physics comes from government hydrology models (HAND/NWM), not from an ML surrogate, except for one explicitly bounded exception (Section 6.3)
 - Not a point-coordinate missing-person predictor — search-area output is a probability-weighted polygon, never a pin
 
@@ -37,7 +37,7 @@ This product closes that synthesis gap in two settings:
 | User | Use case |
 |---|---|
 | Trainee (EOC staff, incident commander in training) | Walks the Kerr County replay timeline, makes tactical calls at each decision point, receives cited critique |
-| Pre-deployment planner / strike team lead | Submits a draft IAP; system red-teams it against projected inundation and historical AAR outcomes before deployment |
+| Incident commander / EOC staff (live rescue) | Uses the live twin during an active flood response; proposes tactics and receives cited critique against projected inundation and historical AAR outcomes |
 | Trainer / after-action reviewer | Exports the full decision log with citations for debrief |
 
 ---
