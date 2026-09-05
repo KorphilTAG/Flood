@@ -23,7 +23,11 @@ from flood.interfaces import (
 _CELERITY_CACHE: dict[tuple[int, int], np.ndarray] = {}
 
 
-# TODO(fix-up): replace with flood.engine.rating once C03 merges
+# Scalar rating helpers. These deliberately duplicate the definitions in
+# flood.engine.rating (vectorised) because the routing loop calls them once per
+# reach per time step per member; wrapping each call in numpy arrays made the
+# loop about ten times slower. tests/test_routing.py::test_scalar_helpers_match_rating
+# pins them to the vectorised implementation.
 def _stage_from_q(rt: RatingTable, cidx: int, q: float) -> tuple[float, bool]:
     if q <= 0.0:
         return float(rt.stage_m[cidx, 0]), False

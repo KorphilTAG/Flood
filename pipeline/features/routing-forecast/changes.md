@@ -68,7 +68,7 @@ tests/test_ingest_hand.py::test_clip_branch_tiny_geotiffs
 
 ## Residual risk
 
-- Private rating helpers `_stage_from_q`, `_wet_area`, `_top_width`, and `_celerity` in `src/flood/engine/routing.py` should be replaced with imports from `flood.engine.rating` once C03 merges.
+- Private rating helpers `_stage_from_q`, `_wet_area`, `_top_width`, and `_celerity` in `src/flood/engine/routing.py` are kept as fast scalar versions after the fix-up pass (the vectorised `flood.engine.rating` calls slowed the per-step loop about tenfold); `tests/test_routing.py::test_scalar_helpers_match_rating` pins them to `flood.engine.rating`.
 - `FixtureForcingView` in `tests/test_routing.py` is a lightweight test double adhering to `ForcingView` protocol; will be superseded by `ParquetForcingView` once C04 merges.
 
 ## Not done

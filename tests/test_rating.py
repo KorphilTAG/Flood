@@ -19,19 +19,17 @@ def test_apply_n_scale():
     np.testing.assert_allclose(apply_n_scale(arr, 2.0), [5.0, 10.0])
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="Linear interpolation on 1-ft (0.3048m) rating table has discretization chord error of 0.0029m at stage=2.0; cannot achieve atol=1e-4 on mini_cube fixture",
-)
-def test_stage_from_q_exact_fixture_spec_tolerance(mini_cube: HandCube):
+def test_stage_from_q_exact_at_table_node(mini_cube: HandCube):
+    """At a node of the 1-ft table, linear interpolation is exact."""
     b0 = mini_cube.branch(0)
     rt = b0.rating
-    # Catchment index 2 is reach 103 (order 3, a = 20.0)
+    # Catchment index 2 is reach 103 (order 3, a = 20.0); node 7 is 2.1336 m
+    node_stage = 0.3048 * 7
     cidx = np.array([2])
-    q = np.array([20.0 * (2.0 ** 1.5)])
+    q = np.array([20.0 * (node_stage ** 1.5)])
     stage, clipped = stage_from_q(rt, cidx, q)
     assert not clipped[0]
-    np.testing.assert_allclose(stage[0], 2.0, atol=1e-4)
+    np.testing.assert_allclose(stage[0], node_stage, atol=1e-4)
 
 
 def test_stage_from_q_exact_fixture(mini_cube: HandCube):

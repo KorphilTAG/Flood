@@ -20,7 +20,8 @@ def test_stage_timer_as_ms() -> None:
     assert "total" in timings
     assert timings["routing"] >= 5
     assert timings["mapping"] >= 5
-    assert timings["total"] >= timings["routing"] + timings["mapping"]
+    # stages and total are rounded independently to whole ms, so allow 1 ms of rounding slack
+    assert timings["total"] + 1 >= timings["routing"] + timings["mapping"]
 
 
 def test_stage_timer_log() -> None:

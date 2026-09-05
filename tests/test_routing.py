@@ -295,3 +295,23 @@ def test_runtime(mini_cube, mini_scenario, mini_data_dir):
     elapsed = time.perf_counter() - t_start
 
     assert elapsed < 2.0
+
+
+def test_scalar_helpers_match_rating(mini_cube):
+    """The scalar helpers in routing.py must agree with flood.engine.rating."""
+    from flood.engine import rating
+    from flood.engine.routing import _celerity, _stage_from_q, _top_width, _wet_area
+
+    rt = mini_cube.branch(0).rating
+    cidx = 2
+    for q in (0.5, 5.0, 36.7, 120.0, 500.0):
+        s_scalar, clipped_scalar = _stage_from_q(rt, cidx, q)
+        s_vec, clipped_vec = rating.stage_from_q(rt, np.array([cidx]), np.array([q], dtype=np.float32))
+        assert abs(s_scalar - float(s_vec[0])) < 1e-4
+        assert clipped_scalar == bool(clipped_vec[0])
+        assert abs(_wet_area(rt, cidx, s_scalar) - float(rating.wet_area(rt, np.array([cidx]), np.array([s_scalar], dtype=np.float32))[0])) < 1e-3
+        assert abs(_top_width(rt, cidx, s_scalar) - float(rating.top_width(rt, np.array([cidx]), np.array([s_scalar], dtype=np.float32))[0])) < 1e-3
+        # interior points only: endpoint difference schemes differ
+        if 5.0 <= q <= 120.0:
+            c_vec = float(rating.celerity(rt, np.array([cidx]), np.array([q], dtype=np.float32))[0])
+            assert abs(_celerity(rt, cidx, q) - c_vec) < 0.05 * max(c_vec, 0.1)
