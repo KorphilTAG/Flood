@@ -275,8 +275,10 @@ def test_fixture_horizon_0_beats_persistence(fixture_run_data):
         )
 
 
-def test_cli_when_engine_run_not_available(capsys):
-    """Test CLI exit and message when flood.engine.run is not available."""
+def test_cli_when_engine_run_not_available(capsys, monkeypatch):
+    """CLI exits 2 with a clear message when flood.engine.run cannot be imported."""
+    import sys
+    monkeypatch.setitem(sys.modules, "flood.engine.run", None)  # makes the import raise ImportError
     code = main(["skill", "test-run"])
     assert code == 2
     captured = capsys.readouterr()
@@ -284,8 +286,19 @@ def test_cli_when_engine_run_not_available(capsys):
     assert "error: engine run store not available" in out
 
 
-def test_cli_guarded():
-    """Test CLI full execution, guarded by flood.engine.run (will skip in C10)."""
+def test_cli_full_run(tmp_path, mini_scenario, mini_data_dir):
+    """flood skill computes and writes skill.parquet for a real run on the fixture."""
     pytest.importorskip("flood.engine.run")
-    code = main(["skill", "test-run"])
+    from flood.engine.run import RunStore
+
+    runs_dir = tmp_path / "runs"
+    store = RunStore(runs_dir, mini_data_dir)
+    run = store.create(mini_scenario, "replay", None)
+    code = main([
+        "skill", run.run_id,
+        "--runs-dir", str(runs_dir), "--data-dir", str(mini_data_dir),
+        "--cutoff-step-min", "180", "--horizons", "0,60",
+    ])
     assert code == 0
+    assert (run.run_dir / "skill.parquet").exists()
+    assert (run.run_dir / "skill_detail.parquet").exists()

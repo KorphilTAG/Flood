@@ -47,8 +47,8 @@ class FakeRun:
         run_id: str,
         run_dir: Path,
         manifest: dict[str, Any],
-        record_start: datetime | str = "2025-07-03T12:00:00Z",
-        record_end: datetime | str = "2025-07-05T12:00:00Z",
+        record_start: datetime | str = "2025-01-01T00:00:00Z",
+        record_end: datetime | str = "2025-01-01T12:00:00Z",
         max_horizon_minutes: int = 360,
     ) -> None:
         self.run_id = run_id

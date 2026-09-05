@@ -19,20 +19,21 @@ from tests.fakes.fake_run import FakeRunStore
 
 
 @pytest.fixture
-def api_dirs(tmp_path: Path, repo_root: Path) -> dict[str, Path]:
+def api_dirs(tmp_path: Path, repo_root: Path, mini_huc_dir: Path) -> dict[str, Path]:
     scenarios_dir = tmp_path / "scenarios"
     scenarios_dir.mkdir(parents=True)
-    # Copy valid Kerr scenario
+    # Copy valid Kerr scenario (listed by /scenarios) and the mini-huc fixture scenario
+    # (used to create runs, because the fixture data dir holds its cube and forcing).
     kerr_src = repo_root / "scenarios" / "kerr-2025-07-04.json"
     (scenarios_dir / "kerr-2025-07-04.json").write_text(kerr_src.read_text(encoding="utf-8"), encoding="utf-8")
+    (scenarios_dir / "mini-huc.json").write_text((mini_huc_dir / "scenario.json").read_text(encoding="utf-8"), encoding="utf-8")
 
     # Add an invalid json file to test skipping
     (scenarios_dir / "broken.json").write_text("not json", encoding="utf-8")
 
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir(parents=True)
-    data_dir = tmp_path / "data"
-    data_dir.mkdir(parents=True)
+    data_dir = mini_huc_dir / "data"  # production layout: cube/<id>, usgs/<id>, nwm/<id>
 
     return {
         "scenarios_dir": scenarios_dir,
@@ -70,7 +71,7 @@ def test_scenarios_list_and_get(client: TestClient, api_dirs: dict[str, Path]) -
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
-    assert len(data) == 1
+    assert len(data) == 2  # kerr-2025-07-04 and mini-huc; broken.json is skipped
     assert data[0]["scenario_id"] == "kerr-2025-07-04"
     assert "name" in data[0]
 
@@ -104,7 +105,7 @@ def test_runs_create_list_get(client: TestClient) -> None:
     resp_bad_forcing = client.post(
         "/runs",
         json={
-            "scenario_id": "kerr-2025-07-04",
+            "scenario_id": "mini-huc",
             "mode": "replay",
             "forcing_overrides": {"nonexistent_override_key": 123},
         },
@@ -115,7 +116,7 @@ def test_runs_create_list_get(client: TestClient) -> None:
     # Valid POST /runs -> 202
     resp_create = client.post(
         "/runs",
-        json={"scenario_id": "kerr-2025-07-04", "mode": "replay"},
+        json={"scenario_id": "mini-huc", "mode": "replay"},
     )
     assert resp_create.status_code == 202
     manifest = resp_create.json()
@@ -143,7 +144,7 @@ def test_runs_create_list_get(client: TestClient) -> None:
 
 def test_state_route_and_timegrid_errors(client: TestClient) -> None:
     """GET /runs/{run_id}/state tests validation, hindsight, and error codes."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
     # Missing parameters -> 400 missing_parameter
@@ -151,12 +152,12 @@ def test_state_route_and_timegrid_errors(client: TestClient) -> None:
     assert resp_missing.status_code == 400
     assert resp_missing.json()["error"]["code"] == "missing_parameter"
 
-    resp_missing_t = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z")
+    resp_missing_t = client.get(f"/runs/{run_id}/state?p=2025-01-01T08:00:00Z")
     assert resp_missing_t.status_code == 400
     assert resp_missing_t.json()["error"]["code"] == "missing_parameter"
 
     # Valid nowcast: p == t
-    resp_nowcast = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z&t=2025-07-04T08:00:00Z")
+    resp_nowcast = client.get(f"/runs/{run_id}/state?p=2025-01-01T08:00:00Z&t=2025-01-01T08:00:00Z")
     assert resp_nowcast.status_code == 200
     state_json = resp_nowcast.json()
     assert state_json["mode"] == "nowcast"
@@ -164,7 +165,7 @@ def test_state_route_and_timegrid_errors(client: TestClient) -> None:
     validate_json("state-response", state_json)
 
     # Valid forecast: t > p
-    resp_fc = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z&t=2025-07-04T10:00:00Z")
+    resp_fc = client.get(f"/runs/{run_id}/state?p=2025-01-01T08:00:00Z&t=2025-01-01T10:00:00Z")
     assert resp_fc.status_code == 200
     state_fc = resp_fc.json()
     assert state_fc["mode"] == "forecast"
@@ -172,7 +173,7 @@ def test_state_route_and_timegrid_errors(client: TestClient) -> None:
     validate_json("state-response", state_fc)
 
     # Valid hindsight: p=hindsight
-    resp_hind = client.get(f"/runs/{run_id}/state?p=hindsight&t=2025-07-04T10:00:00Z")
+    resp_hind = client.get(f"/runs/{run_id}/state?p=hindsight&t=2025-01-01T10:00:00Z")
     assert resp_hind.status_code == 200
     state_hind = resp_hind.json()
     assert state_hind["mode"] == "hindsight"
@@ -180,12 +181,13 @@ def test_state_route_and_timegrid_errors(client: TestClient) -> None:
     validate_json("state-response", state_hind)
 
     # Error: t_before_p
-    resp_t_before_p = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z&t=2025-07-04T07:00:00Z")
+    resp_t_before_p = client.get(f"/runs/{run_id}/state?p=2025-01-01T08:00:00Z&t=2025-01-01T07:00:00Z")
     assert resp_t_before_p.status_code == 400
     assert resp_t_before_p.json()["error"]["code"] == "t_before_p"
 
     # Error: horizon_exceeded (> 360 min)
-    resp_horizon = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z&t=2025-07-04T15:00:00Z")
+    # 6.5 h ahead, inside the 00:00-12:00 record
+    resp_horizon = client.get(f"/runs/{run_id}/state?p=2025-01-01T02:00:00Z&t=2025-01-01T08:30:00Z")
     assert resp_horizon.status_code == 400
     assert resp_horizon.json()["error"]["code"] == "horizon_exceeded"
 
@@ -197,7 +199,7 @@ def test_state_route_and_timegrid_errors(client: TestClient) -> None:
 
 def test_hindsight_route(client: TestClient) -> None:
     """GET /runs/{run_id}/hindsight?t= equals state?p=hindsight&t=."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
     # Missing t
@@ -205,27 +207,28 @@ def test_hindsight_route(client: TestClient) -> None:
     assert resp_missing.status_code == 400
     assert resp_missing.json()["error"]["code"] == "missing_parameter"
 
-    t = "2025-07-04T09:00:00Z"
+    t = "2025-01-01T09:00:00Z"
     resp_h = client.get(f"/runs/{run_id}/hindsight?t={t}")
     assert resp_h.status_code == 200
 
     resp_s = client.get(f"/runs/{run_id}/state?p=hindsight&t={t}")
     assert resp_s.status_code == 200
-    assert resp_h.json() == resp_s.json()
+    volatile = {"computed_at", "compute_ms", "cache"}
+    assert {k: v for k, v in resp_h.json().items() if k not in volatile} == {k: v for k, v in resp_s.json().items() if k not in volatile}
 
 
 def test_reaches_and_gauges_routes(client: TestClient) -> None:
     """GET /runs/{run_id}/reaches and /gauges return rows conforming to schemas."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
     # Reaches missing parameter
-    resp_r_miss = client.get(f"/runs/{run_id}/reaches?p=2025-07-04T08:00:00Z")
+    resp_r_miss = client.get(f"/runs/{run_id}/reaches?p=2025-01-01T08:00:00Z")
     assert resp_r_miss.status_code == 400
     assert resp_r_miss.json()["error"]["code"] == "missing_parameter"
 
     # Reaches valid
-    resp_r = client.get(f"/runs/{run_id}/reaches?p=2025-07-04T08:00:00Z&t=2025-07-04T10:00:00Z")
+    resp_r = client.get(f"/runs/{run_id}/reaches?p=2025-01-01T08:00:00Z&t=2025-01-01T10:00:00Z")
     assert resp_r.status_code == 200
     reaches_rows = resp_r.json()
     assert len(reaches_rows) > 0
@@ -238,7 +241,7 @@ def test_reaches_and_gauges_routes(client: TestClient) -> None:
     assert resp_g_miss.json()["error"]["code"] == "missing_parameter"
 
     # Gauges valid
-    resp_g = client.get(f"/runs/{run_id}/gauges?p=2025-07-04T08:00:00Z")
+    resp_g = client.get(f"/runs/{run_id}/gauges?p=2025-01-01T08:00:00Z")
     assert resp_g.status_code == 200
     gauges_rows = resp_g.json()
     assert len(gauges_rows) > 0
@@ -248,11 +251,11 @@ def test_reaches_and_gauges_routes(client: TestClient) -> None:
 
 def test_raster_and_byte_ranges(client: TestClient) -> None:
     """GET /runs/{run_id}/raster serves file with byte range support."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
-    p = "2025-07-04T08:00:00Z"
-    t = "2025-07-04T08:00:00Z"
+    p = "2025-01-01T08:00:00Z"
+    t = "2025-01-01T08:00:00Z"
 
     # Missing parameter
     resp_miss = client.get(f"/runs/{run_id}/raster?p={p}")
@@ -284,7 +287,7 @@ def test_raster_and_byte_ranges(client: TestClient) -> None:
 
 def test_tte_route(client: TestClient) -> None:
     """GET /runs/{run_id}/tte serves time_to_exceedance.tif; 400 hindsight_has_no_tte."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
     # Missing p
@@ -298,7 +301,7 @@ def test_tte_route(client: TestClient) -> None:
     assert resp_hind.json()["error"]["code"] == "hindsight_has_no_tte"
 
     # Valid tte
-    p = "2025-07-04T08:00:00Z"
+    p = "2025-01-01T08:00:00Z"
     resp_tte = client.get(f"/runs/{run_id}/tte?p={p}")
     assert resp_tte.status_code == 200
     assert resp_tte.headers["accept-ranges"] == "bytes"
@@ -307,11 +310,11 @@ def test_tte_route(client: TestClient) -> None:
 
 def test_overlay_route(client: TestClient) -> None:
     """GET /runs/{run_id}/overlay.png serves PNG with X-Bounds-3857; validates band and clamps max_px."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
 
-    p = "2025-07-04T08:00:00Z"
-    t = "2025-07-04T08:00:00Z"
+    p = "2025-01-01T08:00:00Z"
+    t = "2025-01-01T08:00:00Z"
 
     # Missing parameters
     resp_miss = client.get(f"/runs/{run_id}/overlay.png?p={p}")
@@ -337,7 +340,7 @@ def test_overlay_route(client: TestClient) -> None:
 
 def test_skill_route(client: TestClient, store: Any) -> None:
     """GET /runs/{run_id}/skill returns rows of skill.parquet or 404 skill_not_computed."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
     run = store.get(run_id)
 
@@ -364,17 +367,17 @@ def test_skill_route(client: TestClient, store: Any) -> None:
 
 def test_static_products_and_hindsight_routes(client: TestClient, store: Any) -> None:
     """Test static product and hindsight downloads, byte-ranges, and path traversal rejection."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
     run = store.get(run_id)
 
     # Ensure files exist via run.state(write=True)
-    p = "2025-07-04T08:00:00Z"
-    t = "2025-07-04T08:00:00Z"
+    p = "2025-01-01T08:00:00Z"
+    t = "2025-01-01T08:00:00Z"
     run.state(p, t, write=True)
 
     # GET static product
-    prod_path = "p=20250704T0800Z/t=20250704T0800Z/depth.tif"
+    prod_path = "p=20250101T0800Z/t=20250101T0800Z/depth.tif"
     resp_prod = client.get(f"/runs/{run_id}/products/{prod_path}")
     assert resp_prod.status_code == 200
     assert resp_prod.headers["accept-ranges"] == "bytes"
@@ -396,7 +399,7 @@ def test_static_products_and_hindsight_routes(client: TestClient, store: Any) ->
 
     # GET static hindsight
     run.state("hindsight", t, write=True)
-    hind_path = "t=20250704T0800Z/depth.tif"
+    hind_path = "t=20250101T0800Z/depth.tif"
     resp_hind = client.get(f"/runs/{run_id}/hindsight/{hind_path}")
     assert resp_hind.status_code == 200
     assert resp_hind.headers["accept-ranges"] == "bytes"
@@ -404,22 +407,25 @@ def test_static_products_and_hindsight_routes(client: TestClient, store: Any) ->
 
 def test_unhandled_exception_returns_500(client: TestClient, store: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """Unhandled exceptions return HTTP 500 with code 'internal'."""
-    create_resp = client.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
     run_id = create_resp.json()["run_id"]
     run = store.get(run_id)
 
     def explode(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("Something exploded")
 
-    monkeypatch.setattr(run, "state", explode)
+    # Patch the class: the real store may hand the API a different Run instance than ours.
+    monkeypatch.setattr(type(run), "state", explode)
 
-    resp = client.get(f"/runs/{run_id}/state?p=2025-07-04T08:00:00Z&t=2025-07-04T08:00:00Z")
+    resp = client.get(f"/runs/{run_id}/state?p=2025-01-01T08:00:00Z&t=2025-01-01T08:00:00Z")
     assert resp.status_code == 500
     assert resp.json() == {"error": {"code": "internal", "message": "Something exploded"}}
 
 
-def test_engine_unavailable(api_dirs: dict[str, Path]) -> None:
-    """When store is None, /runs routes return 503 engine_unavailable, while scenarios still work."""
+def test_engine_unavailable(api_dirs: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the engine cannot be imported, /runs routes return 503 engine_unavailable, while scenarios still work."""
+    import sys
+    monkeypatch.setitem(sys.modules, "flood.engine.run", None)  # import raises ImportError
     settings = Settings(
         runs_dir=api_dirs["runs_dir"],
         data_dir=api_dirs["data_dir"],
@@ -436,11 +442,11 @@ def test_engine_unavailable(api_dirs: dict[str, Path]) -> None:
         assert resp_runs.status_code == 503
         assert resp_runs.json() == {"error": {"code": "engine_unavailable", "message": "Physics engine is unavailable"}}
 
-        resp_post = c.post("/runs", json={"scenario_id": "kerr-2025-07-04", "mode": "replay"})
+        resp_post = c.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
         assert resp_post.status_code == 503
         assert resp_post.json()["error"]["code"] == "engine_unavailable"
 
-        resp_state = c.get("/runs/any/state?p=2025-07-04T08:00:00Z&t=2025-07-04T08:00:00Z")
+        resp_state = c.get("/runs/any/state?p=2025-01-01T08:00:00Z&t=2025-01-01T08:00:00Z")
         assert resp_state.status_code == 503
         assert resp_state.json()["error"]["code"] == "engine_unavailable"
 

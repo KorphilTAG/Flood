@@ -142,6 +142,19 @@ def range_file_response(
     )
 
 
+def _records(df: pd.DataFrame) -> list[dict]:
+    """DataFrame rows as JSON-safe dicts: contract ISO timestamps (second precision), NaN -> null."""
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_datetime64_any_dtype(out[col]):
+            ser = out[col]
+            if getattr(ser.dt, "tz", None) is None:
+                ser = ser.dt.tz_localize("UTC")
+            out[col] = ser.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    out = out.astype(object).where(pd.notna(out), None)
+    return out.to_dict(orient="records")
+
+
 router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(get_store)])
 
 
@@ -280,7 +293,7 @@ def get_reaches(
         )
     run = _get_run(store, run_id)
     df = run.reaches(p, t)
-    rows = json.loads(df.to_json(orient="records", date_format="iso"))
+    rows = _records(df)
     return JSONResponse(status_code=200, content=rows)
 
 
@@ -299,7 +312,7 @@ def get_gauges(
         )
     run = _get_run(store, run_id)
     df = run.gauges(p)
-    rows = json.loads(df.to_json(orient="records", date_format="iso"))
+    rows = _records(df)
     return JSONResponse(status_code=200, content=rows)
 
 
@@ -432,7 +445,7 @@ def get_skill(run_id: str, store: Any = Depends(get_store)) -> JSONResponse:
             message=f"Skill file not computed for run '{run_id}'",
         )
     df = pd.read_parquet(skill_file)
-    rows = json.loads(df.to_json(orient="records", date_format="iso"))
+    rows = _records(df)
     return JSONResponse(status_code=200, content=rows)
 
 

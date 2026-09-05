@@ -25,7 +25,7 @@ def run_skill(args: argparse.Namespace) -> int:
         return 2
 
     store = RunStore(runs_dir=args.runs_dir, data_dir=args.data_dir)
-    run = store.open(args.run_id)
+    run = store.get(args.run_id)
 
     # Cutoffs grid: every args.cutoff_step_min minutes across the record
     step_min = int(args.cutoff_step_min)

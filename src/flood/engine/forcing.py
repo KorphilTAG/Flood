@@ -103,6 +103,8 @@ class ParquetForcingView:
         self.network = network
         self.gauges = gauges
         self._ratio_cache: dict[int, float] = {}
+        self._qlat_tables: dict = {}
+        self._cutoff_analysis_ns: int = 0
 
     def obs_q(self, site: str) -> pd.Series:
         """Observed discharge in cms with latency applied and outages removed."""
@@ -371,60 +373,63 @@ class ParquetForcingView:
         self._ratio_cache[fid] = float(clamped)
         return float(clamped)
 
-    def qlat(self, feature_id: int, tau: datetime | str) -> float:
-        """Lateral inflow at tau, with fallback chain and ratio multiplier."""
-        fid = int(feature_id)
-        tau_utc = _parse_utc(tau)
+    def _qlat_table(self, fid: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float | None]:
+        """Precompute the qlat fallback chain for one feature as sorted arrays.
 
+        Returns (analysis_times_ns, analysis_vals, sr_times_ns, sr_vals, last_known_analysis):
+        analysis rows for the feature (all valid times), the latest short-range cycle known at
+        p, and the last analysis value known at p (or None). Cached per feature so routing can
+        call qlat once per reach per time step cheaply.
+        """
+        cached = self._qlat_tables.get(fid)
+        if cached is not None:
+            return cached
         latency_analysis = timedelta(minutes=self.store.latencies.get("nwm_analysis_assim", 60))
         cutoff_analysis = self.p - latency_analysis
+        a = self.store.nwm_analysis
+        fa = a[a["feature_id"] == fid].sort_values("valid_time") if not a.empty else a
+        if not fa.empty and "qlat_cms" in fa.columns:
+            a_times = fa["valid_time"].values.astype("datetime64[ns]").astype(np.int64)
+            a_vals = fa["qlat_cms"].values.astype(np.float64)
+            known = fa[fa["valid_time"] <= cutoff_analysis]
+            last_known = float(known["qlat_cms"].iloc[-1]) if not known.empty else None
+        else:
+            a_times = np.empty(0, np.int64); a_vals = np.empty(0, np.float64); last_known = None
+        latency_sr = timedelta(minutes=self.store.latencies.get("nwm_short_range", 90))
+        cutoff_sr = self.p - latency_sr
+        sr = self.store.nwm_short_range
+        sr_times = np.empty(0, np.int64); sr_vals = np.empty(0, np.float64)
+        if not sr.empty and "qlat_cms" in sr.columns:
+            fsr = sr[(sr["feature_id"] == fid) & (sr["issue_time"] <= cutoff_sr)]
+            if not fsr.empty:
+                cyc = fsr[fsr["issue_time"] == fsr["issue_time"].max()].sort_values("valid_time")
+                sr_times = cyc["valid_time"].values.astype("datetime64[ns]").astype(np.int64)
+                sr_vals = cyc["qlat_cms"].values.astype(np.float64)
+        self._cutoff_analysis_ns = int(np.datetime64(cutoff_analysis.replace(tzinfo=None), "ns").astype(np.int64))
+        table = (a_times, a_vals, sr_times, sr_vals, last_known)
+        self._qlat_tables[fid] = table
+        return table
 
-        analysis_df = self.store.nwm_analysis
-        feat_a_all = analysis_df[analysis_df["feature_id"] == fid]
+    def qlat(self, feature_id: int, tau: datetime | str) -> float:
+        """Lateral inflow at tau, with fallback chain and ratio multiplier.
 
-        base_qlat = 0.0
-        found = False
-
-        # 1. Analysis value at the last valid_time <= tau IF that value is known at p
-        if not feat_a_all.empty:
-            a_before_tau = feat_a_all[feat_a_all["valid_time"] <= tau_utc]
-            if not a_before_tau.empty:
-                max_vt = a_before_tau["valid_time"].max()
-                if max_vt <= cutoff_analysis:
-                    matching_rows = a_before_tau[a_before_tau["valid_time"] == max_vt]
-                    if "qlat_cms" in matching_rows.columns:
-                        base_qlat = float(matching_rows["qlat_cms"].iloc[-1])
-                        found = True
-
-        # 2. Latest short-range value at the last valid_time <= tau
-        if not found:
-            latency_sr = timedelta(minutes=self.store.latencies.get("nwm_short_range", 90))
-            cutoff_sr = self.p - latency_sr
-            sr_df = self.store.nwm_short_range
-            feat_sr = sr_df[(sr_df["feature_id"] == fid) & (sr_df["issue_time"] <= cutoff_sr)]
-            if not feat_sr.empty:
-                max_issue = feat_sr["issue_time"].max()
-                cycle_sr = feat_sr[feat_sr["issue_time"] == max_issue]
-                cycle_before_tau = cycle_sr[cycle_sr["valid_time"] <= tau_utc]
-                if not cycle_before_tau.empty:
-                    max_vt = cycle_before_tau["valid_time"].max()
-                    matching_rows = cycle_before_tau[cycle_before_tau["valid_time"] == max_vt]
-                    if "qlat_cms" in matching_rows.columns:
-                        base_qlat = float(matching_rows["qlat_cms"].iloc[-1])
-                        found = True
-
-        # 3. Last known analysis value
-        if not found:
-            feat_a_known = feat_a_all[feat_a_all["valid_time"] <= cutoff_analysis]
-            if not feat_a_known.empty:
-                max_vt = feat_a_known["valid_time"].max()
-                matching_rows = feat_a_known[feat_a_known["valid_time"] == max_vt]
-                if "qlat_cms" in matching_rows.columns:
-                    base_qlat = float(matching_rows["qlat_cms"].iloc[-1])
-                    found = True
-
-        # 4. Fallback: 0.0
-        if not found:
-            base_qlat = 0.0
-
+        Chain: analysis value at the last valid_time <= tau if that value is known at p;
+        else the latest known short-range cycle's value at the last valid_time <= tau;
+        else the last analysis value known at p; else 0.0.
+        """
+        fid = int(feature_id)
+        tau_utc = _parse_utc(tau)
+        tau_ns = int(np.datetime64(tau_utc.replace(tzinfo=None), "ns").astype(np.int64))
+        a_times, a_vals, sr_times, sr_vals, last_known = self._qlat_table(fid)
+        base_qlat = None
+        if len(a_times):
+            i = int(np.searchsorted(a_times, tau_ns, side="right")) - 1
+            if i >= 0 and a_times[i] <= self._cutoff_analysis_ns:
+                base_qlat = float(a_vals[i])
+        if base_qlat is None and len(sr_times):
+            j = int(np.searchsorted(sr_times, tau_ns, side="right")) - 1
+            if j >= 0:
+                base_qlat = float(sr_vals[j])
+        if base_qlat is None:
+            base_qlat = float(last_known) if last_known is not None else 0.0
         return float(base_qlat * self.ratio(fid))
