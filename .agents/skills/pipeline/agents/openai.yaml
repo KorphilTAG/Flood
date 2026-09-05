@@ -1,0 +1,7 @@
+interface:
+  display_name: "Feature Pipeline"
+  short_description: "Plan, implement, and review a feature against the PRD"
+  default_prompt: "Run the feature pipeline for: "
+
+policy:
+  allow_implicit_invocation: false
