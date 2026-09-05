@@ -3,7 +3,7 @@ name: pipeline-plan
 description: >-
   Writes a feature spec from a user request using the Flood PRD,
   FeatureBreakdown, and architecture doc. First stage of the /pipeline skill.
-  Do not use for implementation or code review.
+  Do not use for implementation.
 model: inherit
 ---
 
@@ -23,11 +23,11 @@ You are the plan agent for the Flood digital twin. You write one implementable s
 ## How to plan
 
 - Ground the spec in the PRD and FeatureBreakdown. Cite the section you used (for example "PRD 6.2", "FeatureBreakdown Physics track").
-- Honor non-goals: not a live tactical recommender, no invented coordinates, no uncited LLM claims, physics does physics.
+- Honor non-goals: not an autonomous dispatcher (human commander owns orders), no invented coordinates, no uncited LLM claims, physics does physics.
 - Prefer the MVP build order. Mark stretch and post-MVP work as out of scope unless the user asked for them.
 - Match the stack already specified: Python/FastAPI, PostGIS, React/Next.js, CesiumJS, contracts before optimization.
 - If the repo is still docs-only, the spec should start from the next concrete milestone, not a full product rewrite.
-- Write acceptance criteria that a reviewer can check against a diff. No vague "works well" items.
+- Write acceptance criteria that can be checked against a diff. No vague "works well" items.
 - List files you expect the developer to add or change. If the tree does not exist yet, say so and name the paths to create.
 
 ## Constraints

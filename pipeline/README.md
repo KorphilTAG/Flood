@@ -1,6 +1,6 @@
 # Feature pipeline
 
-Plan (Fable) → developer (Sonnet) → reviewer (Sonnet).
+Plan (Fable) → developer (Sonnet).
 
 Invoke it from any of:
 
@@ -9,4 +9,4 @@ Invoke it from any of:
 
 Example: `/pipeline stub the four JSON contracts`
 
-Artifacts land in `pipeline/features/<slug>/` as `spec.md`, `changes.md`, and `review.md`.
+Artifacts land in `pipeline/features/<slug>/` as `spec.md` and `changes.md`.
