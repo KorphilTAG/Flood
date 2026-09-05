@@ -21,6 +21,7 @@ flood = "flood.cli:main"
 where = ["src"]
 [tool.setuptools.package-data]
 "flood.contracts" = ["schemas/*.json"]
+"flood.verifier" = ["static/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["network: needs internet, skipped by default"]
