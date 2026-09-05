@@ -49,7 +49,7 @@ Plain `src/flood` package. Contracts are validated two ways: pydantic models for
 | `src/flood/engine/cube.py` | add | `HandCube.save`, `HandCube.load` |
 | `src/flood/cli.py` | add | Registry and `scenario validate` |
 | `scenarios/kerr-2025-07-04.json` | add | Copy of the contract example |
-| `tests/conftest.py` | add | `repo_root`, `mini_huc_dir`, `mini_cube`, `kerr_scenario` fixtures |
+| `tests/conftest.py` | add | `repo_root`, `mini_huc_dir`, `mini_data_dir`, `mini_cube`, `mini_scenario`, `kerr_scenario` fixtures |
 | `tests/fixtures/mini_huc/__init__.py`, `build.py` | add | Fixture generator |
 | `tests/test_contracts.py`, `tests/test_scenario.py`, `tests/test_timegrid.py`, `tests/test_cube.py`, `tests/test_fixture.py` | add | Acceptance tests |
 
@@ -271,7 +271,7 @@ Files: `meta.json` (grid as dict, `branches: [ids]`, `created_at`, `source`), `r
 
 ### tests/fixtures/mini_huc/build.py
 
-`build(out_dir: Path) -> Path`, deterministic, writes a cube via `HandCube.save`, a scenario file, and forcing Parquet files.
+`build(out_dir: Path) -> Path`, deterministic. Layout mirrors production so that `out_dir/data` is a valid `data_dir` for `scenario_id = "mini-huc"`: `out_dir/scenario.json`; the cube via `HandCube.save` at `out_dir/data/cube/mini-huc/`; forcing at `out_dir/data/usgs/mini-huc/continuous.parquet`, `out_dir/data/nwm/mini-huc/analysis.parquet`, `out_dir/data/nwm/mini-huc/short_range.parquet`. Nothing else is written.
 
 - Grid: `Grid.from_bounds((0.0, 0.0, 400.0, 200.0))`, width 40, height 20, EPSG:5070.
 - Network, 6 reaches, columns `NETWORK_COLUMNS`: 101 to 103, 102 to 103, 103 to 104, 104 to 105, 105 to 106, 106 to 0. Orders: 101 and 102 are 2, the rest 3. `levelpath_id`: 101, 103 to 106 are 9; 102 is 8. `length_m` 1000 each. `slope` 0.002. `gauge_site`: 101 has `"90000001"`, 103 has `"90000003"`, 105 has `"90000005"`, others null. `in_aoi` true for all. `preferred_branch` 9 for 103 to 106, 0 for 101 and 102. `representative_cidx` per the rating rows below. `flowline_wkb`: a straight two-point LineString per reach, any coordinates inside the grid.
@@ -279,8 +279,8 @@ Files: `meta.json` (grid as dict, `branches: [ids]`, `created_at`, `source`), `r
 - Rating, k = 84 rows, `stage_m = 0.3048 * arange(84)`; `q_cms = a * stage ** 1.5` with `a = 8.0` for order 2 and `a = 20.0` for order 3; `top_width_m = 10.0`; `wet_area_m2 = 10.0 * stage`; `hyd_radius_m = wet_area / (10 + 2 * stage)`; `lake_id = -999`; `length_km = 1.0`; `slope = 0.002`; `manning_n = 0.06`. `hydro_id` = 25130000 + reach id; `feature_id` = reach id.
 - Gauges table: sites 90000001 (feature 101, role boundary), 90000003 (103, interior), 90000005 (105, interior); `dem_adj_elevation_m` 500, 490, 480; `gauge_altitude_m` same; `altitude_datum` "NAVD88".
 - Scenario `scenario.json`: `scenario_id` "mini-huc", `huc8` ["99999999"], `fim_version` "4.9.9.0", AOI bounds as above, record 2025-01-01T00:00:00Z to 2025-01-01T12:00:00Z, gauges as above, one junction inference: inferred_reach 102, downstream_gauge 90000003, subtract_gauges [90000001], travel_time_minutes 10. `forcing_defaults` identical to the Kerr example except sites. `exposure_layers: []`. No decision points.
-- Forcing, under `out_dir/forcing/`: `usgs/continuous.parquet` with 5-minute rows 00:00 to 12:00 for the three sites and parameter 00060: site 90000001 `q = 5 + 45 * tri(t)` where `tri` rises linearly from 0 at 02:00 to 1 at 05:00 and falls to 0 at 10:00, else 0; site 90000003 `q = 2 * q_90000001(t - 10 min) + 3` ; site 90000005 `q = q_90000003(t - 20 min) * 0.98`. Parameter 00065 rows `value_si = (q / 20) ** (2/3)` for 90000001 and 90000003 (order 3 formula for simplicity). `nwm/analysis.parquet` hourly for all six features: `q_cms = 0.5 * truth` where truth is the site series for gauged reaches and `q_cms = 0.5 * q_90000001` for 102, `v_ms = 1.0`, `qlat_cms = 0.5`. `nwm/short_range.parquet`: issue times 00:00, 06:00; valid hourly for 6 hours; `q_cms = analysis at valid time * 0.9`, `qlat_cms = 0.45`.
+- Forcing, under `out_dir/data/`: `usgs/mini-huc/continuous.parquet` with 5-minute rows 00:00 to 12:00 for the three sites and parameter 00060: site 90000001 `q = 5 + 45 * tri(t)` where `tri` rises linearly from 0 at 02:00 to 1 at 05:00 and falls to 0 at 10:00, else 0; site 90000003 `q = 2 * q_90000001(t - 10 min) + 3` ; site 90000005 `q = q_90000003(t - 20 min) * 0.98`. Parameter 00065 rows `value_si = (q / 20) ** (2/3)` for 90000001 and 90000003 (order 3 formula for simplicity). `nwm/mini-huc/analysis.parquet` hourly for all six features: `q_cms = 0.5 * truth` where truth is the site series for gauged reaches and `q_cms = 0.5 * q_90000001` for 102, `v_ms = 1.0`, `qlat_cms = 0.5`. `nwm/mini-huc/short_range.parquet`: issue times 00:00, 06:00; valid hourly for 6 hours; `q_cms = analysis at valid time * 0.9`, `qlat_cms = 0.45`.
 
 ### tests/conftest.py
 
-Fixtures: `repo_root` (Path), `mini_huc_dir` (session scope, calls `build` into `tests/fixtures/mini_huc/out`), `mini_cube` (`HandCube.load`), `mini_scenario` (`load_scenario`), `kerr_scenario`.
+Fixtures: `repo_root` (Path), `mini_huc_dir` (session scope, calls `build` into `tests/fixtures/mini_huc/out`), `mini_data_dir` (`mini_huc_dir / "data"`), `mini_cube` (`HandCube.load(mini_data_dir / "cube" / "mini-huc")`), `mini_scenario` (`load_scenario`), `kerr_scenario`.

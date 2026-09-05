@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/gauge-row.schema.json",
+  "title": "One row of gauges.parquet, as JSON (contract 1, section 6)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gauge_ref", "site", "feature_id", "p", "t", "is_forecast",
+    "observed_q_cms", "observed_wse_m",
+    "predicted_q_mid_cms", "predicted_q_low_cms", "predicted_q_high_cms", "predicted_wse_mid_m", "wse_datum"
+  ],
+  "properties": {
+    "gauge_ref": { "$ref": "common.schema.json#/$defs/gauge_ref" },
+    "site": { "$ref": "common.schema.json#/$defs/usgs_site" },
+    "feature_id": { "type": "integer", "minimum": 1 },
+    "p": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "t": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "is_forecast": { "type": "boolean" },
+    "observed_q_cms": { "oneOf": [ { "$ref": "common.schema.json#/$defs/non_negative" }, { "type": "null" } ] },
+    "observed_wse_m": { "oneOf": [ { "type": "number" }, { "type": "null" } ] },
+    "predicted_q_mid_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "predicted_q_low_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "predicted_q_high_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "predicted_wse_mid_m": { "type": "number" },
+    "wse_datum": { "const": "NAVD88" }
+  }
+}
