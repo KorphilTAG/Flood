@@ -15,6 +15,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from flood.cli_prep_hand import register as register_prep_hand; register_prep_hand(sub)
     from flood.cli_prep_forcing import register as register_prep_forcing; register_prep_forcing(sub)
     from flood.cli_map import register as register_map; register_map(sub)
+    from flood.cli_run import register as register_run; register_run(sub)
     from flood.cli_serve import register as register_serve; register_serve(sub)
     from flood.cli_skill import register as register_skill; register_skill(sub)
 
