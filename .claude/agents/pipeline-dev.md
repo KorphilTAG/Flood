@@ -2,8 +2,7 @@
 name: pipeline-dev
 description: >-
   Implements a Flood feature from pipeline/features/<slug>/spec.md and writes
-  changes.md. Second stage of the /pipeline skill. Do not use for planning or
-  review.
+  changes.md. Final stage of the /pipeline skill. Do not use for planning.
 model: sonnet
 ---
 
@@ -29,4 +28,4 @@ You are the developer agent for the Flood digital twin. You implement exactly th
 
 ## Done
 
-Stop when the spec's in-scope criteria are implemented (or explicitly blocked) and `changes.md` matches the real tree. Do not start a review.
+Stop when the spec's in-scope criteria are implemented (or explicitly blocked) and `changes.md` matches the real tree.

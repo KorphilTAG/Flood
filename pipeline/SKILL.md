@@ -2,16 +2,15 @@
 name: pipeline
 description: >-
   Runs the Flood feature pipeline: plan (Fable) writes a spec from the PRD and
-  FeatureBreakdown, developer (Sonnet) implements it and writes changes.md,
-  reviewer (Sonnet) checks the spec against the diff. Use only when the user
-  invokes /pipeline, $pipeline, or explicitly asks to run the feature pipeline.
-  Do not use for the product's AAR/data pipeline.
+  FeatureBreakdown, developer (Sonnet) implements it and writes changes.md.
+  Use only when the user invokes /pipeline, $pipeline, or explicitly asks to
+  run the feature pipeline. Do not use for the product's AAR/data pipeline.
 disable-model-invocation: true
 ---
 
 # Feature pipeline
 
-Orchestrate three isolated agents, in order, to ship one feature. Do not implement the feature yourself. Do not run the three stages in one context. Do not start a later stage until the earlier stage's artifact exists on disk.
+Orchestrate two isolated agents, in order, to ship one feature. Do not implement the feature yourself. Do not run the two stages in one context. Do not start the later stage until the earlier stage's artifact exists on disk.
 
 ## Required input
 
@@ -27,7 +26,6 @@ Create a kebab-case slug from the feature (lowercase, hyphens, max 40 characters
 pipeline/features/<slug>/
   spec.md       # plan agent
   changes.md    # developer agent
-  review.md     # reviewer agent
 ```
 
 Copy the matching file from `pipeline/templates/` into that folder before each stage writes it. Never overwrite a completed `spec.md` once the developer has started.
@@ -49,7 +47,6 @@ Later agents read the spec, not the PRD, unless a spec section is incomplete.
 |---|---|---|---|
 | 1. Plan | `pipeline-plan` | Fable (`claude-fable-5`). Fallback: newest Opus. | Most capable available GPT (prefer GPT-5.4+ / Codex Max). |
 | 2. Develop | `pipeline-dev` | Sonnet (`claude-sonnet-5`) | Default Codex coding model |
-| 3. Review | `pipeline-review` | Sonnet (`claude-sonnet-5`) | Default Codex coding model |
 
 Pin these models on the subagent call. Do not inherit the parent model. If Fable is unavailable, say so and use Opus — do not silently drop to a fast or mini model for planning.
 
@@ -62,8 +59,7 @@ Pipeline:
 - [ ] Slug chosen, folder created
 - [ ] Plan finished; spec.md exists and has all required sections
 - [ ] Developer finished; changes.md exists
-- [ ] Reviewer finished; review.md exists
-- [ ] Verdict reported to the user
+- [ ] Result reported to the user
 ```
 
 ### 1. Plan
@@ -88,20 +84,9 @@ Launch `pipeline-dev` as a **foreground** subagent. Pass:
 
 Wait until it returns. Then confirm `changes.md` exists and lists at least one touched path. If the spec said the feature is already present, `changes.md` may list zero code files but must still explain that. Do not continue without `changes.md`.
 
-### 3. Review
+### 3. Report
 
-Launch `pipeline-review` as a **foreground** subagent. Pass:
-
-- Paths to `spec.md` and `changes.md`
-- Output path `pipeline/features/<slug>/review.md`
-- Instruction to follow `pipeline/agents/review.md` and fill `pipeline/templates/review.md`
-- Instruction to inspect the real diff and file contents, not only `changes.md`
-
-Wait until it returns. Then confirm `review.md` exists and has a `## Verdict` of `PASS`, `PASS WITH GAPS`, or `FAIL`.
-
-### 4. Report
-
-Quote the verdict and the reviewer's missing/incorrect items. Do not start a fix loop unless the user asks. Do not commit or push.
+Summarize what `changes.md` says was implemented, and flag anything it marks as skipped or as a residual risk. Do not start a fix loop unless the user asks. Do not commit or push.
 
 ## How to launch agents
 
@@ -109,19 +94,19 @@ Use the named custom agents when they are registered. If a harness cannot see th
 
 ### Cursor
 
-Use the Task tool with `subagent_type` set to `pipeline-plan`, then `pipeline-dev`, then `pipeline-review`. Set `run_in_background` to false. Pass `model` as `claude-fable-5` for plan and `claude-sonnet-5` for the other two. Do not pass a different model — those agents set `force-default-model: true`.
+Use the Task tool with `subagent_type` set to `pipeline-plan`, then `pipeline-dev`. Set `run_in_background` to false. Pass `model` as `claude-fable-5` for plan and `claude-sonnet-5` for develop. Do not pass a different model — those agents set `force-default-model: true`.
 
 ### Claude Code
 
-Delegate with the Agent tool to `pipeline-plan`, then `pipeline-dev`, then `pipeline-review`. Those definitions already pin `model: fable` and `model: sonnet`. Do not override.
+Delegate with the Agent tool to `pipeline-plan`, then `pipeline-dev`. Those definitions already pin `model: fable` and `model: sonnet`. Do not override.
 
 ### Codex
 
-If custom agents are available, run `$pipeline-plan`, then `$pipeline-dev`, then `$pipeline-review` (or the harness equivalent). Otherwise, execute each file in `pipeline/agents/` as a separate agent turn, in that order, switching models per the table. Do not keep plan-stage PRD context in the developer or reviewer turn.
+If custom agents are available, run `$pipeline-plan`, then `$pipeline-dev` (or the harness equivalent). Otherwise, execute each file in `pipeline/agents/` as a separate agent turn, in that order, switching models per the table. Do not keep plan-stage PRD context in the developer turn.
 
 ## Hard rules
 
-- Sequential only. Never launch developer or reviewer in parallel with plan.
-- The parent agent does not edit application code, specs, or reviews except to create the feature folder and copy templates.
+- Sequential only. Never launch developer in parallel with plan.
+- The parent agent does not edit application code or specs except to create the feature folder and copy templates.
 - Stop the pipeline if a stage fails to write its artifact.
 - This skill is the product **feature** pipeline. It is not the AAR extraction pipeline in the architecture doc.
