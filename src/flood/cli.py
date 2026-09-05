@@ -13,6 +13,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     # REGISTER: later cycles add exactly one register_* call below this line
     from flood.cli_scenario import register as register_scenario; register_scenario(sub)
     from flood.cli_prep_hand import register as register_prep_hand; register_prep_hand(sub)
+    from flood.cli_prep_forcing import register as register_prep_forcing; register_prep_forcing(sub)
+    from flood.cli_map import register as register_map; register_map(sub)
 
     args = parser.parse_args(argv)
     if hasattr(args, "func"):
