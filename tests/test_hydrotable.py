@@ -152,3 +152,14 @@ def test_remap_catchments(caplog: pytest.LogCaptureFixture) -> None:
     assert remapped.dtype == np.int32
     # Check that unknown HydroID count was logged
     assert "Remapped 1 pixels with unknown HydroIDs to -1" in caplog.text
+
+
+def test_apply_hydroid_prefix():
+    """int16 catchment values expand to full HydroIDs with the branch prefix; nodata stays -1."""
+    import numpy as np
+    from flood.ingest.hydrotable import apply_hydroid_prefix
+
+    raw = np.array([[-1, 0, 74], [1491, 25130005, 99]], dtype=np.int32)
+    out = apply_hydroid_prefix(raw, 2513)
+    expected = np.array([[-1, -1, 25130074], [25131491, 25130005, 25130099]], dtype=np.int64)
+    np.testing.assert_array_equal(out, expected)

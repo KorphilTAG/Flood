@@ -39,6 +39,11 @@ def get_branch_rem_url(fim_version: str, huc8: str, branch_id: int | str) -> str
     )
 
 
+def get_branch_prefix_url(fim_version: str, huc8: str, branch_id: int | str) -> str:
+    """Return download URL for the branch hydroid_prefix.txt (int16 catchment encoding)."""
+    return get_branch_file_url(fim_version, huc8, branch_id, "hydroid_prefix.txt")
+
+
 def get_branch_catch_url(fim_version: str, huc8: str, branch_id: int | str) -> str:
     """Return download URL for branch catchment raster."""
     return get_branch_file_url(
@@ -201,7 +206,7 @@ def prep_hand(
     import pandas as pd
     from flood.contracts.models import Scenario
     from flood.engine.cube import HandCube
-    from flood.ingest.hydrotable import build_rating, remap_catchments
+    from flood.ingest.hydrotable import apply_hydroid_prefix, build_rating, remap_catchments
     from flood.ingest.network import build_gauges, build_network
     from flood.interfaces import BranchArrays
 
@@ -311,6 +316,9 @@ def prep_hand(
 
         download(rem_url, rem_dest, force=force)
         download(catch_url, catch_dest, force=force)
+        prefix_dest = b_dir / "hydroid_prefix.txt"
+        download(get_branch_prefix_url(fim_version, huc8, b), prefix_dest, force=force)
+        hydroid_prefix = int(prefix_dest.read_text(encoding="utf-8").strip())
 
         # Check intersection
         with rasterio.open(rem_dest) as src:
@@ -320,9 +328,16 @@ def prep_hand(
             logger.info("Branch %s is disjoint from AOI; omitting", b)
             continue
 
-        rem_f32, catch_hydroid_i32 = clip_branch(rem_dest, catch_dest, grid)
+        rem_f32, catch_raw_i32 = clip_branch(rem_dest, catch_dest, grid)
+        catch_hydroid = apply_hydroid_prefix(catch_raw_i32, hydroid_prefix)
         rating_table, hydroid_to_cidx = build_rating(combined_hydrotable, b)
-        catch_cidx = remap_catchments(catch_hydroid_i32, hydroid_to_cidx)
+        catch_cidx = remap_catchments(catch_hydroid, hydroid_to_cidx)
+        covered = ~np.isnan(rem_f32)
+        mapped = float((catch_cidx >= 0)[covered].mean()) if covered.any() else 0.0
+        if covered.any() and mapped == 0.0:
+            logger.warning("Branch %s: no catchment matched the hydrotable (prefix %d); check encoding", b, hydroid_prefix)
+        else:
+            logger.info("Branch %s: %.1f%% of covered cells mapped to a catchment", b, mapped * 100)
 
         branch_arrays = BranchArrays(
             branch_id=b,

@@ -120,6 +120,25 @@ def build_rating(
     return rating_table, hydroid_to_cidx
 
 
+HYDROID_PREFIX_MULTIPLIER = 10_000
+
+
+def apply_hydroid_prefix(catch_raw: np.ndarray, prefix: int) -> np.ndarray:
+    """Expand int16 catchment raster values to full HydroIDs.
+
+    NOAA stores catchment rasters as int16 with the branch's ``hydroid_prefix.txt``
+    stripped: full HydroID = prefix * 10000 + raster value (value 0 is nodata, which
+    clip_branch already turned into -1). Values already >= 10000 are left as they are.
+    """
+    raw = np.asarray(catch_raw).astype(np.int64)
+    out = np.full(raw.shape, -1, dtype=np.int64)
+    small = (raw > 0) & (raw < HYDROID_PREFIX_MULTIPLIER)
+    out[small] = int(prefix) * HYDROID_PREFIX_MULTIPLIER + raw[small]
+    big = raw >= HYDROID_PREFIX_MULTIPLIER
+    out[big] = raw[big]
+    return out
+
+
 def remap_catchments(
     catch_hydroid: np.ndarray,
     hydroid_to_cidx: dict[int, int],

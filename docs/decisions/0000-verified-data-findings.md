@@ -8,11 +8,24 @@ Bucket prefix: `https://ciroh-owp-hand-fim.s3.amazonaws.com/hand_fim_4_9_9_0/121
 
 - Grid is EPSG:5070 at 10 m, tiled 256x256 GeoTIFF, LZW. Branch 0 raster is 15558x6404, about 100 million cells. Each branch has its own extent, so all branches must be clipped to one common grid before mosaicking.
 - `rem_zeroed_masked_<branch>.tif` (the HAND raster) is int16 in millimetres, nodata 32767. NOAA's `tools/inundation.py` multiplies stage by 1000 in int16 mode and drops depths under 30 mm. The catchment raster `gw_catchments_reaches_filtered_addedAttributes_<branch>.tif` is int16 HydroID, nodata 0.
+- Catchment rasters are int16 and store the HydroID with the branch's `hydroid_prefix.txt` stripped: full HydroID = prefix × 10000 + raster value (prefix is `2513` for every branch of this HUC; value 0 is nodata). The hydrotable's `HydroID Int16` column holds the same stripped value. Found 2026-09-05 when the first Kerr product mapped nothing.
+- The HUC-level `hydrotable.parquet` is a reduced table (HUC, branch_id, HydroID and feature_id as strings, stage, discharge_cms, SurfaceArea, LakeID, Bathymetry_source). Slope, roughness, wetted area, hydraulic radius, top width, length and order exist only in `hydrotable.csv` and the per-branch `hydroTable_<b>.csv`.
 - HydroIDs repeat across branches. The HUC rating table has 1964 unique (branch_id, HydroID) pairs but only 1683 unique HydroIDs. Every lookup must be keyed by both. 134 NWM feature_ids appear in both branch 0 and a levelpath branch; NOAA's mosaic step takes the per-cell maximum across branches.
 - `hydrotable.csv` at HUC level is 67 MB (also `.parquet`, `.feather`). 84 stage rows per catchment at 0.3048 m steps up to 25.3 m. Columns include feature_id, discharge_cms, SLOPE, ManningN (0.06 everywhere), channel_n 0.07, overbank_n 0.11 to 0.13, WetArea, HydraulicRadius, TopWidth, LENGTHKM, LakeID (-999 means not a lake), calb_applied. Only 15 catchments carry a USGS-calibrated curve. 169 catchments have AI-based bathymetry applied.
 - 12 branches. Levelpath 1619000006 is the Guadalupe main stem including the North Fork: 144 NWM reaches, 8 gauges. Levelpath 1619000016 is the South Fork: 30 reaches, 31 km, stream order 3, no gauge. Levelpath 1619000015 is Johnson Creek with gauge 08166000.
 - `usgs_elev_table.csv` maps each USGS site to feature_id and (branch, HydroID) with a DEM-adjusted elevation. Sites in the HUC: 08165300 N Fk nr Hunt, 08165500 Hunt, 08166000 Johnson Ck nr Ingram, 08166140 Kerrville abv Bear Ck, 08166200 Kerrville, 08166250 Center Point, 08167000 Comfort, 08167200 Bergheim, 08167500 Spring Branch, 08167700 Canyon Lake.
 - Also present at HUC level: `nwm_subset_streams_levelPaths.gpkg` (244 reaches with to-node, order, slope, length, levelpath), `nwm_catchments_proj_subset.gpkg` (catchment polygons per feature_id, useful for zonal rainfall), `osm_roads_subset.gpkg`, `osm_bridges_subset.gpkg`, `nwm_lakes_proj_subset.gpkg`.
+
+## Corridor AOI (EPSG:5070)
+
+Flowline extents from the FIM network, used to set the Kerr scenario AOI to `[-340000, 764000, -274000, 790000]` (6600 by 2600 cells at 10 m):
+
+| Feature | x range | y range |
+|---|---|---|
+| South Fork Guadalupe (levelpath 1619000016) | -337119 to -320758 | 769624 to 782893 |
+| Lower Johnson Creek (levelpath 1619000015) | -331199 to -312408 | 782588 to 796533 |
+| Main stem, North Fork gauge to Comfort | -327108 to -277117 | 766762 to 784148 |
+| Gauges: N Fk nr Hunt (-326128, 782343), Hunt (-320189, 782866), Johnson Ck (-315599, 786145), Kerrville abv Bear Ck (-307704, 782204), Kerrville (-304128, 779990), Center Point (-299526, 773134), Comfort (-278306, 769720) | | |
 
 ## National Water Model on GCS
 
