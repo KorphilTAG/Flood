@@ -54,6 +54,8 @@ cd ../Flood-<slug> && py -3.12 -m venv .venv && .venv/Scripts/python -m pip inst
 
 Merge order within a wave does not matter because files are disjoint. Merge with `git merge --no-ff feature/<slug>` on `master`, run `pytest`, push. Delete the worktree after merge: `git worktree remove ../Flood-<slug>`.
 
+Never `git rebase` a `master` that contains these merge commits; rebase flattens them and re-raises every resolved conflict. To pick up teammates' work use `git fetch` then `git merge origin/master` (or `git pull --no-rebase`). Several cycles may also run in one worktree if the terminals are started there by mistake; it works because the files are disjoint, but the combined branch then merges as one commit.
+
 ## Per-cycle procedure
 
 1. Confirm the wave gate has merged. Create the worktree and environment.

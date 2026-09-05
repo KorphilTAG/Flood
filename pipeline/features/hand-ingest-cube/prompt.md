@@ -1,0 +1,16 @@
+Implement exactly the spec at the path below. Read it in full first, then read `docs/specs/physics-engine-cycles.md` (sections "File ownership" and "Interface freeze"), `src/flood/interfaces.py`, `src/flood/engine/cube.py`, `tests/conftest.py`, and every existing file the spec names. Follow "Files to change" and "Implementer notes" literally: exact paths, signatures, constants, and test names. Never edit `src/flood/interfaces.py`, `src/flood/engine/cube.py`, `tests/conftest.py`, or anything under `tests/fixtures/`. Do not edit files you do not own; if you need a change elsewhere, record it under Residual risk in changes.md. No scenario constants in code: no basin names, site numbers, HUC codes, or dates in `src/`; everything comes from the scenario file. Do not commit, stage, or run any git command that changes state.
+
+Spec: pipeline/features/hand-ingest-cube/spec.md
+
+Environment:
+- You are at the root of a git worktree on branch `feature/hand-ingest-cube`. Windows 11; use PowerShell syntax for shell commands.
+- First create the environment: `py -3.12 -m venv .venv` then `.venv\Scripts\python.exe -m pip install -e ".[dev]"`. Use `.venv\Scripts\python.exe` for everything, including `-m pytest -q`.
+- Copy `pipeline/templates/changes.md` to `pipeline/features/hand-ingest-cube/changes.md`, fill the Slug and Spec lines, and keep it updated as you work.
+- Cycles C03, C04, C05, C08 are being implemented concurrently in other worktrees. Do not import `flood.engine.rating`, `flood.engine.mapping`, `flood.engine.ensemble`, `flood.engine.forcing`, `flood.engine.routing`, `flood.engine.boundary`, `flood.products`, `flood.clock`, or `flood.ingest.nwm`/`usgs`; they do not exist here.
+- Add exactly one line under the `# REGISTER:` marker in `src/flood/cli.py`, in the same style as the existing line, registering `flood.cli_prep_hand`. The command is `flood prep hand <scenario.json> [--data-dir data] [--force]`.
+- Read `usgs_elev_table.csv` with `dtype={"location_id": str}` so leading zeros survive. `branch_ids.csv` has no header: columns huc8, branch_id. Hydrotable: prefer `hydrotable.parquet`; fall back to CSV with the dtypes named in the spec and `low_memory=False`.
+- Acceptance criteria are the definition of done. Run pytest until green offline. If a criterion cannot be met, keep the test, mark it xfail with a reason, and record it under Not done.
+- After the offline suite is green, run the network smoke once: `.venv\Scripts\python.exe -m pytest -m network tests/test_ingest_hand.py::test_kerr_smoke -q -s`. It downloads a few hundred MB into `data/hand/<huc8>/` (gitignored) and builds `data/cube/kerr-2025-07-04/`. Paste its output into changes.md. If it fails for network or data reasons, record the exact error under Not done and continue.
+- Finish: run `.venv\Scripts\python.exe -m pytest -q` and paste the output into changes.md under "How to verify".
+
+Work order: `download` and URL builders with tests; `clip_branch` and `branch_intersects` with the two-tiny-GeoTIFF test; `hydrotable.py` (`build_rating`, `remap_catchments`) with the hand-built two-catchment test; `network.py` (`build_network`, `build_gauges`) with tests on small synthetic frames; `hand.py` orchestrator that saves via `HandCube.save`; `cli_prep_hand.py`; the network smoke.

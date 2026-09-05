@@ -1,0 +1,17 @@
+Implement exactly the spec at the path below. Read it in full first, then read `docs/specs/physics-engine-cycles.md` (sections "File ownership" and "Interface freeze"), `src/flood/interfaces.py`, `src/flood/engine/cube.py`, `tests/conftest.py`, `tests/fixtures/mini_huc/build.py`, and every existing file the spec names. Follow "Files to change" and "Implementer notes" literally: exact paths, signatures, constants, and test names. Never edit `src/flood/interfaces.py`, `src/flood/engine/cube.py`, `tests/conftest.py`, or anything under `tests/fixtures/`. Do not edit files you do not own; if you need a change elsewhere, record it under Residual risk in changes.md. No scenario constants in `src/`. Do not commit, stage, or run any git command that changes state.
+
+Spec: pipeline/features/hand-mapping-core/spec.md
+
+Environment:
+- You are at the root of a git worktree on branch `feature/hand-mapping-core`. Windows 11; use PowerShell syntax for shell commands.
+- First create the environment: `py -3.12 -m venv .venv` then `.venv\Scripts\python.exe -m pip install -e ".[dev]"`. Use `.venv\Scripts\python.exe` for everything, including `-m pytest -q`.
+- Copy `pipeline/templates/changes.md` to `pipeline/features/hand-mapping-core/changes.md`, fill the Slug and Spec lines, and keep it updated as you work.
+- Cycles C02, C04, C05, C08 are being implemented concurrently in other worktrees. Import only `flood.interfaces`, `flood.engine.cube`, `flood.timegrid`, `flood.timing`, and the modules you create. Do not import `flood.ingest.*`, `flood.engine.forcing`, `flood.engine.routing`, `flood.engine.boundary`, or `flood.clock`.
+- Fixture: use the `mini_cube` fixture from `tests/conftest.py`. The fixture cube has branch 0 (six catchments, `rem = 0.4*|row-10|`) and branch 9 (catchments for reaches 103 to 106 on columns 14 to 39, `rem = 0.4*|row-10| + 0.1`). Rating for order-3 catchments is `q = 20 * stage**1.5`, top width 10 m, wet area `10*stage`, hydraulic radius `wet_area / (10 + 2*stage)`.
+- The exact-depth acceptance test, stated plainly: call `map_member(mini_cube, {103: 20 * 1.5**1.5, 101: 0, 102: 0, 104: 0, 105: 0, 106: 0})`. Branch 0 gives depth `1.5 - 0.4*|row-10|` in columns 14 to 19; branch 9 gives `1.4 - 0.4*|row-10|` there; the `np.fmax` mosaic therefore equals `max(0, 1.5 - 0.4*|row-10|)`: rows 7 to 13 are wet, every other row in those columns is 0, and every other column is 0 because stage 0 minus a non-negative REM is never at least 0.03 m. Assert this cell by cell with `np.testing.assert_allclose(atol=1e-5)`.
+- Add exactly one line under the `# REGISTER:` marker in `src/flood/cli.py`, in the same style as the existing line, registering `flood.cli_map`. The command is `flood map --cube <dir> --q <csv> --out <tif>`.
+- COG writing: write the multi-band GeoTIFF with rasterio to a temporary file, set `descriptions` and per-band `units` tags there, then `rio_cogeo.cog_translate(tmp, out, cog_profiles.get("deflate"), quiet=True)`; assert with `rasterio.open(out).descriptions` and `.tags(1)["units"]` and `rio_cogeo.cog_validate(out)[0]`.
+- Acceptance criteria are the definition of done. Run pytest until green offline. If a criterion cannot be met, keep the test, mark it xfail with a reason, and record it under Not done.
+- Finish: run `.venv\Scripts\python.exe -m pytest -q` and paste the output into changes.md under "How to verify".
+
+Work order: `rating.py` with tests; `mapping.py` with the exact-depth and velocity tests; `ensemble.py` with tests; `products/raster.py` with COG and PNG tests; `cli_map.py`.

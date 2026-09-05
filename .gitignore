@@ -1,2 +1,14 @@
+data/
+runs/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+tests/fixtures/mini_huc/out/
+.claude/settings.local.json
+
 # Manually acquired source PDFs, verified source manifests, and generated local AAR indices.
-data/aar/
+# (covered by data/ above, called out here for clarity)
