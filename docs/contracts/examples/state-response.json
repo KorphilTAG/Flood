@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "run_id": "kerr-2025-07-04-replay-3f9a1c",
+  "mode": "forecast",
+  "p": "2025-07-04T08:00:00Z",
+  "t": "2025-07-04T10:00:00Z",
+  "requested": { "p": "2025-07-04T08:02:30Z", "t": "2025-07-04T09:58:00Z" },
+  "horizon_minutes": 120,
+  "members": ["low", "mid", "high"],
+  "products": {
+    "raster": "/runs/kerr-2025-07-04-replay-3f9a1c/raster?p=2025-07-04T08:00:00Z&t=2025-07-04T10:00:00Z",
+    "reaches_parquet": "/runs/kerr-2025-07-04-replay-3f9a1c/products/p=20250704T0800Z/t=20250704T1000Z/reaches.parquet",
+    "reaches_json": "/runs/kerr-2025-07-04-replay-3f9a1c/reaches?p=2025-07-04T08:00:00Z&t=2025-07-04T10:00:00Z",
+    "time_to_exceedance": "/runs/kerr-2025-07-04-replay-3f9a1c/tte?p=2025-07-04T08:00:00Z",
+    "gauges_json": "/runs/kerr-2025-07-04-replay-3f9a1c/gauges?p=2025-07-04T08:00:00Z",
+    "overlay_png": "/runs/kerr-2025-07-04-replay-3f9a1c/overlay.png?p=2025-07-04T08:00:00Z&t=2025-07-04T10:00:00Z&band=depth_mid"
+  },
+  "computed_at": "2026-09-06T01:05:12Z",
+  "compute_ms": { "state_estimation": 12, "boundary_forecast": 3, "routing": 8, "hand_mapping": 140, "reduce": 20, "write": 0, "total": 183 },
+  "cache": "miss"
+}

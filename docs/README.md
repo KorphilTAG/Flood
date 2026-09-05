@@ -6,6 +6,8 @@ Reference scenario: the Guadalupe River flash flood of 4 July 2025 in Kerr Count
 
 See [architecture.md](architecture.md) for the full design: problem statement, competitive landscape, design principles, and system architecture. Requirements live in [PRD.md](PRD.md). Team work split is only in [FeatureBreakdown.md](FeatureBreakdown.md).
 
+Decisions are recorded one per file in [docs/decisions](decisions/README.md).
+
 ## Data sources
 
 - OWP HAND (HUC8 12100201): `s3://ciroh-owp-hand-fim/hand_fim_4_9_9_0/` (public, no credentials)

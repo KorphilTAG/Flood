@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/state-response.schema.json",
+  "title": "Response of GET /runs/{run_id}/state (contract 1, section 9)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "mode", "p", "t", "requested", "horizon_minutes", "members", "products", "computed_at", "compute_ms", "cache"],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "run_id": { "$ref": "common.schema.json#/$defs/slug" },
+    "mode": { "type": "string", "enum": ["nowcast", "forecast", "hindsight"] },
+    "p": {
+      "oneOf": [ { "$ref": "common.schema.json#/$defs/utc_timestamp" }, { "type": "null" } ],
+      "description": "Snapped cutoff; null in hindsight mode"
+    },
+    "t": { "$ref": "common.schema.json#/$defs/utc_timestamp", "description": "Snapped target" },
+    "requested": {
+      "type": "object", "additionalProperties": false,
+      "required": ["p", "t"],
+      "properties": {
+        "p": { "type": "string", "description": "As received, or the literal 'hindsight'" },
+        "t": { "type": "string" }
+      }
+    },
+    "horizon_minutes": { "type": "integer", "minimum": 0 },
+    "members": { "$ref": "common.schema.json#/$defs/members" },
+    "products": {
+      "type": "object", "additionalProperties": false,
+      "required": ["raster", "reaches_json"],
+      "properties": {
+        "raster": { "type": "string", "description": "URL of depth.tif" },
+        "reaches_parquet": { "type": "string" },
+        "reaches_json": { "type": "string" },
+        "time_to_exceedance": { "type": "string" },
+        "gauges_json": { "type": "string" },
+        "overlay_png": { "type": "string" }
+      }
+    },
+    "computed_at": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "compute_ms": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total"],
+      "properties": {
+        "state_estimation": { "type": "integer", "minimum": 0 },
+        "boundary_forecast": { "type": "integer", "minimum": 0 },
+        "routing": { "type": "integer", "minimum": 0 },
+        "hand_mapping": { "type": "integer", "minimum": 0 },
+        "reduce": { "type": "integer", "minimum": 0 },
+        "write": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cache": { "type": "string", "enum": ["hit", "miss", "precomputed"] }
+  }
+}

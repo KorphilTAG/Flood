@@ -1,0 +1,29 @@
+[
+  {
+    "reach_ref": "reach:3586192", "feature_id": 3586192, "levelpath_id": 1619000006, "stream_order": 4,
+    "gauge_ref": "gauge:08165500",
+    "p": "2025-07-04T08:00:00Z", "t": "2025-07-04T08:00:00Z", "is_forecast": false,
+    "q_mid_cms": 520.0, "q_low_cms": 520.0, "q_high_cms": 520.0,
+    "stage_mid_m": 3.41, "stage_low_m": 3.41, "stage_high_m": 3.41,
+    "rate_of_rise_m_per_h": 4.2, "velocity_ms": 2.6,
+    "source": "observed", "clipped_to_src": false
+  },
+  {
+    "reach_ref": "reach:3585750", "feature_id": 3585750, "levelpath_id": 1619000016, "stream_order": 3,
+    "gauge_ref": null,
+    "p": "2025-07-04T08:00:00Z", "t": "2025-07-04T08:00:00Z", "is_forecast": false,
+    "q_mid_cms": 310.0, "q_low_cms": 310.0, "q_high_cms": 310.0,
+    "stage_mid_m": 3.05, "stage_low_m": 3.05, "stage_high_m": 3.05,
+    "rate_of_rise_m_per_h": 3.8, "velocity_ms": 2.4,
+    "source": "mass_balance", "clipped_to_src": false
+  },
+  {
+    "reach_ref": "reach:3585724", "feature_id": 3585724, "levelpath_id": 1619000006, "stream_order": 4,
+    "gauge_ref": "gauge:08166200",
+    "p": "2025-07-04T08:00:00Z", "t": "2025-07-04T10:00:00Z", "is_forecast": true,
+    "q_mid_cms": 1450.0, "q_low_cms": 980.0, "q_high_cms": 2100.0,
+    "stage_mid_m": 6.8, "stage_low_m": 5.6, "stage_high_m": 8.1,
+    "rate_of_rise_m_per_h": 2.9, "velocity_ms": 3.1,
+    "source": "routed", "clipped_to_src": false
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "gauge_ref": "gauge:08165500", "site": "08165500", "feature_id": 3586192,
+    "p": "2025-07-04T08:00:00Z", "t": "2025-07-04T08:00:00Z", "is_forecast": false,
+    "observed_q_cms": 520.0, "observed_wse_m": 528.2,
+    "predicted_q_mid_cms": 520.0, "predicted_q_low_cms": 520.0, "predicted_q_high_cms": 520.0,
+    "predicted_wse_mid_m": 528.0, "wse_datum": "NAVD88"
+  },
+  {
+    "gauge_ref": "gauge:08166200", "site": "08166200", "feature_id": 3585724,
+    "p": "2025-07-04T08:00:00Z", "t": "2025-07-04T10:00:00Z", "is_forecast": true,
+    "observed_q_cms": null, "observed_wse_m": null,
+    "predicted_q_mid_cms": 1450.0, "predicted_q_low_cms": 980.0, "predicted_q_high_cms": 2100.0,
+    "predicted_wse_mid_m": 494.9, "wse_datum": "NAVD88"
+  }
+]
