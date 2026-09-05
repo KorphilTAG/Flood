@@ -460,28 +460,14 @@ def test_verifier_mount(api_dirs: dict[str, Path], store: Any) -> None:
         resp = c.get("/verifier/")
         assert resp.status_code == (200 if static_dir_exists else 404)
 
-    # Test with verifier/static
-    static_dir = Path(flood.__file__).parent / "verifier" / "static"
-    created = False
-    try:
-        static_dir.mkdir(parents=True, exist_ok=True)
-        index_file = static_dir / "index.html"
-        index_file.write_text("<h1>Verifier UI Test</h1>", encoding="utf-8")
-        created = True
-
-        app_v = create_app(settings=settings, store=store)
-        with TestClient(app_v) as c:
+    # When the packaged verifier exists, its real index.html is served. Never write into
+    # or delete from the package directory here: an earlier version of this test did and
+    # destroyed the shipped index.html.
+    if static_dir_exists:
+        with TestClient(app_default) as c:
             resp_v = c.get("/verifier/")
             assert resp_v.status_code == 200
-            assert "<h1>Verifier UI Test</h1>" in resp_v.text
-    finally:
-        if created:
-            index_file.unlink(missing_ok=True)
-            static_dir.rmdir()
-            try:
-                static_dir.parent.rmdir()
-            except OSError:
-                pass
+            assert "<html" in resp_v.text.lower()
 
 
 def test_clock_integration(client: TestClient) -> None:

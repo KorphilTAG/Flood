@@ -106,22 +106,15 @@ def test_verifier_server_routes():
     assert resp_css.status_code == 200
     assert "#map" in resp_css.text
 
-    # Check routes in app
-    def _collect_paths(routes: list) -> set[str]:
-        paths: set[str] = set()
-        for route in routes:
-            path = getattr(route, "path", None)
-            if isinstance(path, str):
-                paths.add(path)
-            paths |= _collect_paths(getattr(route, "routes", []))
-        return paths
-
-    app_paths = _collect_paths(getattr(app, "routes", []))
+    # Check routes against the OpenAPI schema (robust across FastAPI versions, which
+    # differ in how included routers appear in app.routes). WebSocket routes are not in
+    # OpenAPI, so /clock/ws is checked by connecting.
+    openapi_paths = set(app.openapi()["paths"].keys())
     for template in CONTRACT_PATHS:
-        # Strip query string and normalize param names
-        base_path = template.split("?")[0]
-        # Replace {run} or {scenario_id} for path matching check if needed
-        # Just ensure base path prefix or route exists
-        assert any(
-            base_path.split("{")[0] in p for p in app_paths
-        ), f"Route prefix for {base_path} not found in app.routes"
+        base_path = template.split("?")[0].replace("{run}", "{run_id}")
+        if base_path == "/clock/ws":
+            with client.websocket_connect("/clock/ws") as ws:
+                first = ws.receive_json()
+                assert "t" in first
+            continue
+        assert base_path in openapi_paths, f"{base_path} not found in OpenAPI paths {sorted(openapi_paths)}"
