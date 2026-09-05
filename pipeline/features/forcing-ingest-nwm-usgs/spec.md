@@ -72,6 +72,7 @@ NWM files are listed via the GCS JSON API by prefix, downloaded with `httpx` str
 
 - `GCS_LIST_URL = "https://storage.googleapis.com/storage/v1/b/national-water-model/o"` with params `prefix`, `fields=items(name,size),nextPageToken`; `GCS_OBJECT_URL = "https://storage.googleapis.com/national-water-model/{name}"`.
 - `USGS_CONTINUOUS_URL = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/continuous/items"`; params `monitoring_location_id=USGS-{site}`, `parameter_code`, `datetime=start/end`, `f=json`, `limit=10000`.
-- Store loader: `load_forcing_store(scenario, data_dir) -> ForcingStore` dataclass with three DataFrames and the latency map built from `scenario.forcing_defaults.sources`.
+- Store loader: `load_forcing_store(scenario, data_dir) -> ForcingStore` dataclass with three DataFrames and the latency map built from `scenario.forcing_defaults.sources`. It reads exactly `<data_dir>/usgs/<scenario_id>/continuous.parquet`, `<data_dir>/nwm/<scenario_id>/analysis.parquet`, and `<data_dir>/nwm/<scenario_id>/short_range.parquet`. Missing files yield empty DataFrames with the right columns, not errors.
+- Fixture layout mirrors production: `tests/fixtures/mini_huc/out/data/` is a `data_dir` for `scenario_id = "mini-huc"`. Tests use the `mini_data_dir` and `mini_scenario` fixtures from `tests/conftest.py` and call `load_forcing_store(mini_scenario, mini_data_dir)`. Do not hardcode any other path.
 - Outage removal: `valid_time >= from` and, if `to` present, `valid_time < to`.
 - Downstream walk for `ratio`: follow `to_feature_id` while the next reach has the same `levelpath_id`; stop at 0.

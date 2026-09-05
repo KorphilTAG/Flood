@@ -61,7 +61,7 @@ HTTP (C07), clock (C08), verifier (C09), skill (C10).
 ## Assumptions
 
 - C03 and C05 are merged; their public functions have the signatures in their specs.
-- The forcing store for the fixture lives at `tests/fixtures/mini_huc/out/forcing/`; `Run.create` accepts `data_dir` pointing there for tests (cube at `<data_dir>/cube/<scenario_id>` and forcing at `<data_dir>/forcing/...`). Document the exact layout the fixture builder produces and make `RunStore` accept both the fixture layout and the production layout through one `DataPaths` helper.
+- One data layout everywhere: `<data_dir>/cube/<scenario_id>/`, `<data_dir>/usgs/<scenario_id>/continuous.parquet`, `<data_dir>/nwm/<scenario_id>/analysis.parquet`, `<data_dir>/nwm/<scenario_id>/short_range.parquet`. The fixture provides it at `tests/fixtures/mini_huc/out/data/` (fixture `mini_data_dir`), so tests call `Run.create(mini_scenario, "replay", None, tmp_runs_dir, mini_data_dir, "0.1.0")` with no special casing.
 
 ## Open questions
 

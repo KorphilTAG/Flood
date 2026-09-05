@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/reach-row.schema.json",
+  "title": "One row of reaches.parquet, as JSON (contract 1, section 5)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reach_ref", "feature_id", "levelpath_id", "stream_order", "gauge_ref", "p", "t", "is_forecast",
+    "q_mid_cms", "q_low_cms", "q_high_cms", "stage_mid_m", "stage_low_m", "stage_high_m",
+    "rate_of_rise_m_per_h", "velocity_ms", "source", "clipped_to_src"
+  ],
+  "properties": {
+    "reach_ref": { "$ref": "common.schema.json#/$defs/reach_ref" },
+    "feature_id": { "type": "integer", "minimum": 1 },
+    "levelpath_id": { "type": "integer", "minimum": 0 },
+    "stream_order": { "type": "integer", "minimum": 1, "maximum": 12 },
+    "gauge_ref": { "oneOf": [ { "$ref": "common.schema.json#/$defs/gauge_ref" }, { "type": "null" } ] },
+    "p": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "t": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "is_forecast": { "type": "boolean" },
+    "q_mid_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "q_low_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "q_high_cms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "stage_mid_m": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "stage_low_m": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "stage_high_m": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "rate_of_rise_m_per_h": { "type": "number" },
+    "velocity_ms": { "$ref": "common.schema.json#/$defs/non_negative" },
+    "source": { "$ref": "common.schema.json#/$defs/source_kind" },
+    "clipped_to_src": { "type": "boolean" }
+  }
+}

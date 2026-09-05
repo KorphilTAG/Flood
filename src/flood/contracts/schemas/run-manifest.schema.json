@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/run-manifest.schema.json",
+  "title": "Run manifest, run.json (contract 1, section 3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "created_at", "engine_version", "mode", "scenario", "grid", "time", "members", "forcing", "products", "limitations"],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "run_id": { "$ref": "common.schema.json#/$defs/slug" },
+    "created_at": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "engine_version": { "$ref": "common.schema.json#/$defs/semver" },
+    "mode": { "type": "string", "enum": ["replay", "live"] },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scenario_id", "name", "huc8", "fim_version", "record_start", "record_end", "timezone"],
+      "properties": {
+        "scenario_id": { "$ref": "common.schema.json#/$defs/slug" },
+        "name": { "type": "string" },
+        "huc8": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/huc8" } },
+        "fim_version": { "$ref": "common.schema.json#/$defs/fim_version" },
+        "record_start": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+        "record_end": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+        "timezone": { "type": "string" }
+      }
+    },
+    "grid": {
+      "type": "object", "additionalProperties": false,
+      "required": ["crs", "resolution_m", "width", "height", "transform", "bounds"],
+      "properties": {
+        "crs": { "const": "EPSG:5070" },
+        "resolution_m": { "type": "number", "exclusiveMinimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "transform": { "$ref": "common.schema.json#/$defs/affine" },
+        "bounds": { "$ref": "common.schema.json#/$defs/bounds" }
+      }
+    },
+    "time": {
+      "type": "object", "additionalProperties": false,
+      "required": ["step_minutes", "max_horizon_minutes"],
+      "properties": {
+        "step_minutes": { "type": "integer", "minimum": 1 },
+        "max_horizon_minutes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "members": { "$ref": "common.schema.json#/$defs/members" },
+    "forcing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["config", "config_hash"],
+      "properties": {
+        "config": { "$ref": "forcing-config.schema.json" },
+        "config_hash": { "$ref": "common.schema.json#/$defs/sha256" }
+      }
+    },
+    "products": {
+      "type": "object", "additionalProperties": false,
+      "required": ["raster", "reaches", "time_to_exceedance", "gauges", "hindsight_raster", "hindsight_reaches"],
+      "properties": {
+        "raster": { "type": "string" },
+        "reaches": { "type": "string" },
+        "time_to_exceedance": { "type": "string" },
+        "gauges": { "type": "string" },
+        "hindsight_raster": { "type": "string" },
+        "hindsight_reaches": { "type": "string" }
+      },
+      "description": "Path templates relative to the run directory using {p} and {t} compact timestamps"
+    },
+    "limitations": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  }
+}

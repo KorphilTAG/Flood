@@ -73,6 +73,7 @@ Precompute topological order from `to_feature_id`. Iterate `tau` on a `dt_minute
 
 ## Implementer notes
 
+- Fixture access: `mini_cube`, `mini_scenario`, and `mini_data_dir` fixtures from `tests/conftest.py`; build the view with `ParquetForcingView(mini_scenario, load_forcing_store(mini_scenario, mini_data_dir), p, gauges=mini_cube.gauges)` (signature per C04).
 - Work in seconds internally: `dt_s = config.routing.dt_minutes * 60`; convert `taus` to `np.datetime64[s]`.
 - Keep per-reach state arrays sized `[n_steps]` for `q_in` and `q_out`; the memory is small (244 reaches by 8641 steps at 1 minute).
 - `interp(series, tau)`: `np.interp(tau_s, series.index.view("int64") // 1e9, series.values)` with the series' first value held for `tau` before the first index.
