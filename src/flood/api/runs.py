@@ -372,12 +372,15 @@ def get_overlay(
     t: str | None = None,
     band: str = "depth_mid",
     max_px: int = 2048,
+    smooth: int = 0,
     store: Any = Depends(get_store),
 ) -> Response:
     """Return a colour-ramped PNG in EPSG:3857 with its extent in the X-Bounds-3857 header.
 
     X-Bounds-4326 carries the same extent as west,south,east,north degrees for map
     clients that place images by geographic rectangle (Cesium, Leaflet, MapLibre).
+    ``smooth=1`` renders for draping on 3D terrain: bilinear at every scale, no dilation,
+    anti-aliased wet edge. ``max_px`` is clamped to 256..8192.
     """
     if not p or not t:
         raise APIError(
@@ -392,7 +395,7 @@ def get_overlay(
             message=f"Band '{band}' must be one of {RASTER_BANDS}",
         )
 
-    clamped_max_px = max(256, min(4096, int(max_px)))
+    clamped_max_px = max(256, min(8192, int(max_px)))
     run = _get_run(store, run_id)
     state_arrays, _ = run.state(p, t, write=False)
     array = getattr(state_arrays, band)
@@ -412,7 +415,7 @@ def get_overlay(
             bounds=tuple(g["bounds"]),
         )
 
-    png_bytes, bounds = render_overlay_png(array, grid, max_px=clamped_max_px)
+    png_bytes, bounds = render_overlay_png(array, grid, max_px=clamped_max_px, smooth=bool(smooth))
     xmin, ymin, xmax, ymax = bounds
     west, south, east, north = rasterio.warp.transform_bounds("EPSG:3857", "EPSG:4326", xmin, ymin, xmax, ymax)
     return Response(

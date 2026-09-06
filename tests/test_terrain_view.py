@@ -20,7 +20,7 @@ TERRAIN_CONTRACT_PATHS = [
     "/runs/{run}/state?p=&t=",
     "/runs/{run}/reaches?p=&t=",
     "/runs/{run}/gauges?p=",
-    "/runs/{run}/overlay.png?p=&t=&band=&max_px=",
+    "/runs/{run}/overlay.png?p=&t=&band=&max_px=&smooth=",
     "/runs/{run}/network.geojson",
     "/clock",
     "/clock/ws",
@@ -102,6 +102,28 @@ def test_terrain_page_and_assets_served(client: TestClient) -> None:
     assert "Flood Terrain View" in resp.text
     assert "maplibre" in client.get("/verifier/terrain.js").text.lower()
     assert ".gauge-chip" in client.get("/verifier/terrain.css").text
+
+
+def test_smooth_overlay_route(client: TestClient) -> None:
+    """overlay.png accepts smooth=1 and a max_px above the old 4096 clamp, and still reports bounds."""
+    run_id = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"}).json()["run_id"]
+    resp = client.get(
+        f"/runs/{run_id}/overlay.png?p=2025-01-01T08:00:00Z&t=2025-01-01T10:00:00Z&band=depth_mid&max_px=300&smooth=1"
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert len(resp.headers["X-Bounds-4326"].split(",")) == 4
+    assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    resp_big = client.get(
+        f"/runs/{run_id}/overlay.png?p=2025-01-01T08:00:00Z&t=2025-01-01T10:00:00Z&band=depth_mid&max_px=99999&smooth=1"
+    )
+    assert resp_big.status_code == 200
+    from PIL import Image
+    import io
+
+    w, h = Image.open(io.BytesIO(resp_big.content)).size
+    assert max(w, h) == 8192
 
 
 def test_network_geojson_route(client: TestClient) -> None:

@@ -13,7 +13,8 @@ The only missing input for a 3D view was ground elevation. The HAND REM raster i
 Build the 3D view as a second static page served by the same API process, `/verifier/terrain.html`, with MapLibre GL JS:
 
 - Terrain comes from the public Terrain Tiles dataset on AWS Open Data (terrarium encoding, built from USGS 3DEP over Texas, about 10 m at the maximum zoom). No DEM is downloaded, processed, or served by us.
-- The engine's `overlay.png` is draped on the terrain as an image source, positioned from the `X-Bounds-3857` header. The flooded extent is therefore exactly what the engine computed; the water is painted on the ground rather than modelled as a surface.
+- The engine's `overlay.png` is draped on the terrain as an image source, positioned from the `X-Bounds-4326` header. The flooded extent is therefore exactly what the engine computed; the water is painted on the ground rather than modelled as a surface.
+- The overlay is requested with `smooth=1` at 6144 px (about 12 m per pixel over the corridor): bilinear resampling at every scale, no one-pixel dilation, and an anti-aliased wet edge. The verifier's cell-crisp rendering, which keeps one-cell rivers visible at corridor zoom in 2D, reads as blocks and square rims once draped on relief. Wet cells are identical in both modes.
 - Reach flowlines and gauge points come from a new read-only endpoint, `GET /runs/{run_id}/network.geojson`, built in process from the cube's network table. Reaches are coloured by rate of rise from the reach table; gauges show predicted against observed discharge from the gauge table.
 - The page reads and drives the same `/clock` service as the 2D verifier, so the two pages always show the same moment.
 - Basemaps are free raster tiles (CARTO dark, Esri imagery, OpenStreetMap) with attribution; no API keys.

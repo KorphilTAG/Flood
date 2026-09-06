@@ -14,7 +14,7 @@ export const API = {
   state: '/runs/{run}/state?p=&t=',
   reaches: '/runs/{run}/reaches?p=&t=',
   gauges: '/runs/{run}/gauges?p=',
-  overlay: '/runs/{run}/overlay.png?p=&t=&band=&max_px=',
+  overlay: '/runs/{run}/overlay.png?p=&t=&band=&max_px=&smooth=',
   network: '/runs/{run}/network.geojson',
   clock: '/clock',
   clockWs: '/clock/ws',
@@ -91,7 +91,7 @@ export const state = {
   lagMin: 60,
 
   band: 'depth_mid',
-  maxPx: 4096,
+  maxPx: 6144, // about 12 m per pixel over the corridor, close to the 10 m grid
   opacity: 0.85,
   basemap: 'dark',
   exaggeration: 1.6,
@@ -120,6 +120,7 @@ let styleReady = false;
 const pendingMapOps = [];
 let mapLoaded = false;
 let pendingFit = false;
+let userMoved = false;
 let clockWs = null;
 let debounceTimer = null;
 let controller = null;
@@ -226,7 +227,9 @@ async function fetchJson(url, signal, init = {}) {
 }
 
 async function fetchOverlay(p, t, signal) {
-  const url = apiUrl(API.overlay, { p, t, band: state.band, max_px: state.maxPx });
+  // smooth=1: bilinear at every scale, no dilation, anti-aliased edge. Draped on terrain the
+  // verifier's cell-crisp rendering reads as blocks, and its one-pixel dilation as square rims.
+  const url = apiUrl(API.overlay, { p, t, band: state.band, max_px: state.maxPx, smooth: 1 });
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw await apiError(resp);
   // The API sends the extent both in degrees (X-Bounds-4326) and Web Mercator (X-Bounds-3857).
@@ -443,7 +446,14 @@ function initMap() {
     pitch: 60,
     bearing: -15,
     maxPitch: 80,
+    // The terrain tiles stop at zoom 15 and draped layers stop rendering past the terrain
+    // source's maxzoom; 15 already shows a 10 m grid cell at several screen pixels.
+    maxZoom: 15,
     attributionControl: { compact: true },
+  });
+  // A camera move by hand before the first overlay arrives cancels the automatic corridor fit.
+  map.on('movestart', (e) => {
+    if (e && e.originalEvent) userMoved = true;
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -717,6 +727,7 @@ function flyToSite(site) {
     showError(`Gauge ${site} is not in this run's network`);
     return;
   }
+  userMoved = true;
   map.flyTo({ center: g.marker.getLngLat(), zoom: 13.4, pitch: 66, bearing: -28, duration: 1600 });
 }
 
@@ -779,7 +790,7 @@ async function refresh() {
 
     if (!fitted) {
       fitted = true;
-      fitCorridor();
+      if (!userMoved) fitCorridor();
     }
     hideError();
   } catch (err) {

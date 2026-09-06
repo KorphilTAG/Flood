@@ -144,7 +144,7 @@ Served by the FastAPI process. Paths are relative to the API root. All responses
 | `GET /runs/{run_id}/gauges?p=` | Gauge table as JSON array | |
 | `GET /runs/{run_id}/raster?p=&t=` | The `depth.tif` | `application/octet-stream`, range requests supported |
 | `GET /runs/{run_id}/tte?p=` | The `time_to_exceedance.tif` | |
-| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048` | Colour-ramped PNG in EPSG:3857 for map clients | Response headers `X-Bounds-3857: xmin,ymin,xmax,ymax` and `X-Bounds-4326: west,south,east,north` (degrees, for `Rectangle.fromDegrees` style placement). Transparent where dry or nodata. `p=hindsight` allowed. |
+| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048&smooth=0` | Colour-ramped PNG in EPSG:3857 for map clients | Response headers `X-Bounds-3857: xmin,ymin,xmax,ymax` and `X-Bounds-4326: west,south,east,north` (degrees, for `Rectangle.fromDegrees` style placement). Transparent where dry or nodata. `p=hindsight` allowed. `max_px` clamped to 256..8192. `smooth=1` renders for draping on 3D terrain: bilinear at every scale, no dilation, anti-aliased wet edge; wet cells are the same either way. |
 | `GET /runs/{run_id}/hindsight?t=` | State response for the truth run | Equivalent to `state?p=hindsight&t=` |
 | `GET /runs/{run_id}/network.geojson` | Reach flowlines and gauge points as WGS84 GeoJSON | Static per run. Reach features: id = NWM `feature_id`, `kind: "reach"`, network columns as properties. Gauged reaches add a `kind: "gauge"` Point (id `gauge:<site>`) at the flowline midpoint. Used by the terrain view to join the reach and gauge tables to geometry. |
 
