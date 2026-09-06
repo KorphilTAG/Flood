@@ -82,6 +82,13 @@ export default function OperationalMap({
     landmarks: true,
     flow: true,
   });
+  const progress = floodForecastProgress(target, initial);
+  const projectedHazards = mock.sectors.filter(
+    (s, index) =>
+      index < 3 ||
+      confirmedHazards.includes(s.id) ||
+      progress >= (index === 3 ? 0.55 : 0.8),
+  );
   useEffect(() => {
     events.current = { onSelect, onHover };
   }, [onSelect, onHover]);
@@ -326,6 +333,20 @@ export default function OperationalMap({
       C.Cartesian3.fromDegreesArray(ring.flat());
     const level = fixtureDepth(1.4, target, initial, member);
     const progress = floodForecastProgress(target, initial);
+    const riverPositions =
+      mode3d && dem
+        ? C.Cartesian3.fromDegreesArrayHeights(
+            mock.river.flatMap((value, i) =>
+              i % 2 === 0
+                ? [
+                    value,
+                    mock.river[i + 1],
+                    ground(value, mock.river[i + 1]) + level + 4,
+                  ]
+                : [],
+            ),
+          )
+        : C.Cartesian3.fromDegreesArray(mock.river);
     if (layers.flood) {
       if (mode3d && dem) {
         const floodSurface = terrainFloodFootprint(
@@ -365,9 +386,9 @@ export default function OperationalMap({
     v.entities.add({
       id: 'source:river-halo',
       polyline: {
-        positions: C.Cartesian3.fromDegreesArray(mock.river),
-        clampToGround: true,
-        width: 11,
+        positions: riverPositions,
+        clampToGround: !mode3d,
+        width: 14,
         material: color('#e9fbff').withAlpha(0.9),
       },
     });
@@ -379,14 +400,14 @@ export default function OperationalMap({
         ground(mock.river[10], mock.river[11]) + 30,
       ),
       polyline: {
-        positions: C.Cartesian3.fromDegreesArray(mock.river),
-        clampToGround: true,
-        width: 6,
+        positions: riverPositions,
+        clampToGround: !mode3d,
+        width: 8,
         material: color('#07557c'),
       },
       label: {
-        text: 'GUADALUPE RIVER · FLOOD SOURCE',
-        font: 'bold 14px Arial',
+        text: fieldCopy ? 'GUADALUPE RIVER' : 'GUADALUPE RIVER · FLOOD SOURCE',
+        font: fieldCopy ? 'bold 12px Arial' : 'bold 16px Arial',
         fillColor: C.Color.WHITE,
         showBackground: true,
         backgroundColor: color('#063e5c').withAlpha(0.96),
@@ -448,9 +469,11 @@ export default function OperationalMap({
         });
       });
     if (layers.hazards) {
-      const projectedHazards = mock.sectors.slice(
-        0,
-        Math.min(mock.sectors.length, 2 + Math.floor(progress * 4)),
+      const projectedHazards = mock.sectors.filter(
+        (s, index) =>
+          index < 3 ||
+          confirmedHazards.includes(s.id) ||
+          progress >= (index === 3 ? 0.55 : 0.8),
       );
       projectedHazards.forEach((s, index) =>
         v.entities.add({
@@ -460,8 +483,13 @@ export default function OperationalMap({
             s.lat + 0.002,
             ground(s.lon + 0.007, s.lat + 0.002) + 20,
           ),
+          ellipse: {
+            semiMajorAxis: 180 + progress * 300,
+            semiMinorAxis: 130 + progress * 210,
+            material: color('#dc8031').withAlpha(0.2),
+          },
           label: {
-            text: `${confirmedHazards.includes(s.id) ? '✓ CONFIRMED' : index > 1 ? '△ PROJECTED' : '▲'} · ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
+            text: `${confirmedHazards.includes(s.id) || s.state === 'Confirmed' ? '✓' : index > 2 ? '△ PROJECTED' : '▲'} ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
             font: 'bold 12px Arial',
             fillColor: color('#ffe0a6'),
             showBackground: true,
@@ -512,7 +540,7 @@ export default function OperationalMap({
               material: color('#ae4777').withAlpha(0.14),
             },
             label: {
-              text: `${s.people[0]}–${s.people[1]} people? · ${progress > 0.08 ? 'projected shift' : 'current estimate'}`,
+              text: `${s.people[0]}–${s.people[1]} people?`,
               font: 'bold 12px Arial',
               pixelOffset: new C.Cartesian2(0, 22),
               fillColor: C.Color.WHITE,
@@ -569,7 +597,17 @@ export default function OperationalMap({
         }),
       );
     v.scene.requestRender();
-  }, [ready, mode3d, dem, layers, target, initial, member, confirmedHazards]);
+  }, [
+    ready,
+    mode3d,
+    dem,
+    layers,
+    target,
+    initial,
+    member,
+    confirmedHazards,
+    fieldCopy,
+  ]);
   useEffect(() => {
     const v = viewer.current,
       C = api.current;
@@ -632,11 +670,6 @@ export default function OperationalMap({
   const elevation = dem
     ? sampleElevation(dem, terrain, selectedArea.lon, selectedArea.lat)
     : null;
-  const progress = floodForecastProgress(target, initial);
-  const projectedHazardCount = Math.min(
-    mock.sectors.length,
-    2 + Math.floor(progress * 4),
-  );
   return (
     <section
       className={`map-module ${fieldCopy ? 'field-map-copy' : ''}`}
@@ -653,8 +686,8 @@ export default function OperationalMap({
             </button>
           </fieldset>
         )}
-        <span>
-          {mode3d ? 'USGS 2021 · 20 m contours' : 'Texas · streets & landmarks'}
+        <span className="river-source-key">
+          <i aria-hidden="true" /> Guadalupe River · flood source
         </span>
         <button
           className="icon-button"
@@ -746,10 +779,17 @@ export default function OperationalMap({
           </small>
         </div>
         <div className="forecast-map-status">
-          <strong>{Math.round(progress * 100)}% forecast progression</strong>
+          <strong>
+            {new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/Chicago',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).format(target)}{' '}
+            CDT · {projectedHazards.length} hazard areas
+          </strong>
           <span>
-            {projectedHazardCount} hazard areas · people estimates reposition
-            with time
+            Blue: flood spread · pink arrows: possible people movement
           </span>
         </div>
       </div>
@@ -766,7 +806,7 @@ export default function OperationalMap({
                 initial,
                 member,
               ).toFixed(1)}{' '}
-              m simulated · terrain-constrained planning estimate
+              m simulated · contours 20 m
             </span>
             <a
               href={terrain.sources[0].metaUrl}

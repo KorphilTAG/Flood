@@ -28,11 +28,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from '@/components/ui/collapsible';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -178,6 +173,9 @@ export default function Home() {
     [reportText, setReportText] = useState(''),
     [reportConfidence, setReportConfidence] = useState('Medium');
   const [fieldTab, setFieldTab] = useState('assignment'),
+    [fieldDetailsOpen, setFieldDetailsOpen] = useState(false),
+    [hazardPage, setHazardPage] = useState(0),
+    [objectivePage, setObjectivePage] = useState(0),
     [fieldMapOpen, setFieldMapOpen] = useState(false),
     [fieldMapArea, setFieldMapArea] = useState(mock.sectors[1].id),
     [fieldReportsOpen, setFieldReportsOpen] = useState(false),
@@ -204,10 +202,21 @@ export default function Home() {
   const fieldAssignment = operations.assignments.find(
     (a) => a.teamId === fieldTeam,
   );
+  const objectivePages = useMemo(() => {
+    const pages = [''];
+    for (const word of (fieldAssignment?.objective ?? '').split(/\s+/)) {
+      if (pages[pages.length - 1].length + word.length > 140) pages.push('');
+      pages[pages.length - 1] += `${pages[pages.length - 1] ? ' ' : ''}${word}`;
+    }
+    return pages;
+  }, [fieldAssignment?.objective]);
+  const objectiveIndex = Math.min(objectivePage, objectivePages.length - 1);
   const fieldSector =
     mock.sectors.find((s) => s.id === fieldAssignment?.sectorId) ?? selected;
   const fieldTeamData =
     mock.teams.find((team) => team.id === fieldTeam) ?? mock.teams[1];
+  const hazardIndex = Math.min(hazardPage, fieldSector.evidence.length - 1);
+  const fieldEvidence = fieldSector.evidence[hazardIndex];
   const available = mock.teams.filter(
     (team) =>
       !operations.assignments.some(
@@ -479,19 +488,18 @@ export default function Home() {
                     >
                       <div className="area-top">
                         <span className="sector-code">{s.code}</span>
+                        <strong>{s.name}</strong>
+                      </div>
+                      <div className="area-bottom">
                         <span
                           className={`severity severity-${s.severity.toLowerCase()}`}
                         >
                           {s.severity}
                         </span>
-                      </div>
-                      <strong>{s.name}</strong>
-
-                      <div className="area-bottom">
                         <span>
                           {s.people[1]
-                            ? `${s.people[0]}–${s.people[1]} people estimated`
-                            : 'Access / staging priority'}
+                            ? `${s.people[0]}–${s.people[1]} people?`
+                            : 'Access / staging'}
                         </span>
                         <ChevronRight size={15} />
                       </div>
@@ -690,7 +698,10 @@ export default function Home() {
                 <strong>FLOOD / FIELD</strong>
                 <span>{time(clock)} CDT · Exercise</span>
               </div>
-              <div className="phone-screen">
+              <div
+                className="phone-screen"
+                inert={fieldMapOpen || fieldDetailsOpen}
+              >
                 <div className="phone-incident">
                   <strong>{mock.incidentName}</strong>
                   <span>{mock.areaLabel} · Local exercise</span>
@@ -701,7 +712,11 @@ export default function Home() {
                     <Choice
                       label="Field team"
                       value={fieldTeam}
-                      onChange={setFieldTeam}
+                      onChange={(value) => {
+                        setFieldTeam(value);
+                        setHazardPage(0);
+                        setObjectivePage(0);
+                      }}
                       options={mock.teams.map((team) => ({
                         value: team.id,
                         label: team.name,
@@ -769,37 +784,39 @@ export default function Home() {
                         </div>
                         <h2>{fieldSector.name}</h2>
                         <p className="mission-objective">
-                          {fieldAssignment.objective}
+                          {objectivePages[objectiveIndex]}
                         </p>
-                        <Collapsible className="team-details">
-                          <CollapsibleTrigger>
-                            Team & assignment details
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            {' '}
-                            <dl className="facts-list">
-                              <div>
-                                <dt>Assigned team</dt>
-                                <dd>{fieldTeamData.name}</dd>
-                              </div>
-                              <div>
-                                <dt>Capability / personnel</dt>
-                                <dd>
-                                  {fieldTeamData.capability} /{' '}
-                                  {fieldTeamData.people}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>Last status update</dt>
-                                <dd>{time(fieldAssignment.updatedAt)} CDT</dd>
-                              </div>
-                              <div>
-                                <dt>Command channel</dt>
-                                <dd>Exercise only · no radio link</dd>
-                              </div>
-                            </dl>
-                          </CollapsibleContent>
-                        </Collapsible>{' '}
+                        {objectivePages.length > 1 && (
+                          <div className="objective-page-controls hazard-page-controls">
+                            <button
+                              disabled={objectiveIndex === 0}
+                              onClick={() =>
+                                setObjectivePage(objectiveIndex - 1)
+                              }
+                            >
+                              Previous
+                            </button>
+                            <span>
+                              {objectiveIndex + 1} / {objectivePages.length}
+                            </span>
+                            <button
+                              disabled={
+                                objectiveIndex === objectivePages.length - 1
+                              }
+                              onClick={() =>
+                                setObjectivePage(objectiveIndex + 1)
+                              }
+                            >
+                              Next
+                            </button>
+                          </div>
+                        )}
+                        <button
+                          className="text-button team-details"
+                          onClick={() => setFieldDetailsOpen(true)}
+                        >
+                          Team & assignment details
+                        </button>
                         <div className="field-estimate">
                           <StateTag value={fieldSector.state} />
                           <strong>
@@ -807,7 +824,7 @@ export default function Home() {
                               ? `${fieldSector.people[0]}–${fieldSector.people[1]} people estimated`
                               : 'Access verification task'}
                           </strong>
-                          <p>{fieldSector.uncertainty}</p>
+                          <p>Simulated estimate · verify on arrival</p>
                         </div>
                       </div>
                       <div className="status-block">
@@ -868,14 +885,11 @@ export default function Home() {
                           <span>{fieldSector.severity} hazard posture</span>
                           <strong>{fieldSector.access}</strong>
                           <small>
-                            Review the hazards below before approaching{' '}
-                            {fieldSector.code}.
+                            {fieldSector.code} · {fieldSector.name}
                           </small>
                         </div>
                       </div>
                       <div className="field-section">
-                        <h3>Access assessment</h3>
-                        <p className="access-status">{fieldSector.access}</p>
                         <div className="route-step">
                           <span>01</span>
                           <div>
@@ -894,21 +908,35 @@ export default function Home() {
                             <p>{fieldSector.alternative}</p>
                           </div>
                         </div>
-                        <div className="caution-note">
-                          <TriangleAlert size={16} />
-                          Verify route and bridge approaches. The mock does not
-                          provide turn-by-turn navigation.
-                        </div>
                       </div>
-                      <div className="field-section">
-                        <h3>Known and modeled hazards</h3>
-                        {fieldSector.evidence.map((e, i) => (
-                          <article className="evidence-item" key={i}>
-                            <StateTag value={e.state} />
-                            <p>{e.label}</p>
-                            <small>{e.source}</small>
-                          </article>
-                        ))}
+                      <div className="field-section field-hazard-pages">
+                        <div className="hazard-page-heading">
+                          <h3>Hazards & observations</h3>
+                          <span>
+                            {hazardIndex + 1} / {fieldSector.evidence.length}
+                          </span>
+                        </div>
+                        <article className="evidence-item" aria-live="polite">
+                          <StateTag value={fieldEvidence.state} />
+                          <p>{fieldEvidence.label}</p>
+                          <small>{fieldEvidence.source}</small>
+                        </article>
+                        <div className="hazard-page-controls">
+                          <button
+                            disabled={hazardIndex === 0}
+                            onClick={() => setHazardPage(hazardIndex - 1)}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            disabled={
+                              hazardIndex === fieldSector.evidence.length - 1
+                            }
+                            onClick={() => setHazardPage(hazardIndex + 1)}
+                          >
+                            Next observation <ChevronRight size={16} />
+                          </button>
+                        </div>
                       </div>
                     </TabsContent>
                   </Tabs>
@@ -964,6 +992,47 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {fieldDetailsOpen && fieldAssignment && (
+                <dialog
+                  open
+                  className="phone-map-overlay phone-detail-overlay"
+                  aria-label="Team and assignment details"
+                >
+                  <header>
+                    <strong>Team & assignment</strong>
+                    <button
+                      aria-label="Close team details"
+                      onClick={() => setFieldDetailsOpen(false)}
+                    >
+                      <X size={18} />
+                    </button>
+                  </header>
+                  <dl className="facts-list">
+                    <div>
+                      <dt>Assigned team</dt>
+                      <dd>{fieldTeamData.name}</dd>
+                    </div>
+                    <div>
+                      <dt>Capability / personnel</dt>
+                      <dd>
+                        {fieldTeamData.capability} / {fieldTeamData.people}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Last status update</dt>
+                      <dd>{time(fieldAssignment.updatedAt)} CDT</dd>
+                    </div>
+                    <div>
+                      <dt>Command channel</dt>
+                      <dd>Exercise only · no radio link</dd>
+                    </div>
+                    <div>
+                      <dt>Estimate limitations</dt>
+                      <dd>{fieldSector.uncertainty}</dd>
+                    </div>
+                  </dl>
+                </dialog>
+              )}
               {fieldMapOpen && (
                 <dialog
                   open
