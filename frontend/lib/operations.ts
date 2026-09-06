@@ -25,6 +25,7 @@ export type Report = {
   text: string;
   confidence: string;
   createdAt: number;
+  verifiedAt?: number;
 };
 export type LogEntry = {
   id: string;
@@ -49,11 +50,36 @@ export type Action =
       id: string;
     }
   | { type: 'report'; report: Report }
+  | { type: 'verify'; reportId: string; time: number; id: string }
   | { type: 'connectivity'; offline: boolean; time: number; id: string };
 export function operationsReducer(
   state: Operations,
   action: Action,
 ): Operations {
+  if (action.type === 'verify') {
+    const report = state.reports.find((r) => r.id === action.reportId);
+    if (
+      !report ||
+      report.verifiedAt !== undefined ||
+      action.time < report.createdAt
+    )
+      return state;
+    return {
+      ...state,
+      reports: state.reports.map((r) =>
+        r.id === report.id ? { ...r, verifiedAt: action.time } : r,
+      ),
+      log: [
+        {
+          id: action.id,
+          time: action.time,
+          sectorId: report.sectorId,
+          text: `Commander verified ${report.kind.toLowerCase()} observation · exercise only`,
+        },
+        ...state.log,
+      ],
+    };
+  }
   if (action.type === 'assign') {
     if (
       state.assignments.some(
@@ -181,4 +207,97 @@ export function fixtureDepth(
   const change = (target - initial) / 3600000;
   const factor = member === 'low' ? 0.75 : member === 'high' ? 1.25 : 1;
   return Math.max(0, Math.round((base + change * 0.22) * factor * 10) / 10);
+}
+
+/** Evidence-record share, not probability of correctness or geographic coverage. */
+export function evidenceCoverage(
+  state: Operations,
+  sectorId: string,
+  cutoff: number,
+  seed: { state: string }[],
+) {
+  const reports = visibleReports(state, sectorId, cutoff);
+  const reviewed = reports.filter(
+    (r) => r.verifiedAt !== undefined && r.verifiedAt <= cutoff,
+  ).length;
+  const confirmed =
+    seed.filter((e) => e.state === 'Confirmed').length + reviewed;
+  const total = seed.length + reports.length;
+  const verified = total ? Math.round((100 * confirmed) / total) : 0;
+  return {
+    confirmed,
+    total,
+    verified,
+    modeled: 100 - verified,
+    pending: reports.length - reviewed,
+  };
+}
+export function objectivePresets(capability: string, area: string) {
+  const prompts: Record<string, [string, string][]> = {
+    'Swift-water': [
+      [
+        'Assess water hazards',
+        'Observe flow, debris, and potential entrapment hazards from a safe position. Report conditions and confidence to Command.',
+      ],
+      [
+        'Verify rescue access',
+        'Assess possible water-entry and extraction points. Report limitations and required support before any movement.',
+      ],
+      [
+        'Check occupied structures',
+        'Verify visible occupancy and identify structures requiring further assessment. Report estimated people and observation time.',
+      ],
+    ],
+    'Boat team': [
+      [
+        'Survey boat approach',
+        'Assess boat approach and landing locations. Identify obstructions, water conditions, and alternate access for commander review.',
+      ],
+      [
+        'Locate people',
+        'Observe potential occupied locations and report visible people, assistance needs, and location confidence.',
+      ],
+      [
+        'Check extraction points',
+        'Assess candidate pickup and transfer points. Report capacity constraints and hazards before committing a route.',
+      ],
+    ],
+    'Recon team': [
+      [
+        'Verify road access',
+        'Check road and crossing conditions from a safe observation point. Report closures, obstructions, and available alternate approaches.',
+      ],
+      [
+        'Confirm reported hazard',
+        'Recheck the reported hazard and record its location, observed condition, and timestamp. Distinguish observation from inference.',
+      ],
+      [
+        'Verify occupancy',
+        'Observe priority structures and report signs of occupancy, estimated people, and remaining uncertainty.',
+      ],
+    ],
+    Medical: [
+      [
+        'Assess assistance needs',
+        'Assess reported medical assistance needs and relay urgency, approximate patient numbers, and required support to Command.',
+      ],
+      [
+        'Check medical staging',
+        'Verify staging access, available capacity, and transfer constraints. Report changes before team deployment.',
+      ],
+    ],
+    Logistics: [
+      [
+        'Verify staging capacity',
+        'Check staging access, resource capacity, and supply constraints. Report conditions and timestamp to Command.',
+      ],
+      [
+        'Check supply access',
+        'Assess supply approach and alternate staging options. Identify blocked access and equipment requirements.',
+      ],
+    ],
+  };
+  return (prompts[capability] ?? prompts['Recon team']).map(
+    ([label, text]) => ({ label, text: `${area}: ${text}` }),
+  );
 }

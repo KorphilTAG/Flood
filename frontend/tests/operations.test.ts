@@ -5,6 +5,8 @@ import {
   deriveTimes,
   visibleReports,
   fixtureDepth,
+  evidenceCoverage,
+  objectivePresets,
   type Operations,
 } from '../lib/operations.ts';
 const time = Date.parse('2025-01-01T12:00:00Z');
@@ -125,4 +127,65 @@ void test('Illustrative depth visibly changes with timeline and ensemble selecti
     fixtureDepth(1, time, time, 'high') > fixtureDepth(1, time, time, 'low'),
   );
   assert.equal(fixtureDepth(0, time - 3600000, time, 'low'), 0);
+});
+
+void test('Verification changes coverage only after review, respecting cutoff and offline delivery', () => {
+  const seed = [{ state: 'Inferred' }, { state: 'Confirmed' }];
+  const report = {
+    id: 'r1',
+    teamId: 't1',
+    sectorId: 's1',
+    kind: 'Hazard',
+    text: 'Crossing blocked',
+    confidence: 'High',
+    createdAt: time,
+  };
+  let state = operationsReducer(
+    { ...empty(), offline: true },
+    { type: 'report', report },
+  );
+  assert.equal(evidenceCoverage(state, 's1', time, seed).verified, 50);
+  assert.equal(
+    operationsReducer(state, {
+      type: 'verify',
+      reportId: 'r1',
+      time,
+      id: 'v0',
+    }),
+    state,
+  );
+  state = operationsReducer(state, {
+    type: 'connectivity',
+    offline: false,
+    time,
+    id: 'c1',
+  });
+  assert.equal(evidenceCoverage(state, 's1', time, seed).verified, 33);
+  state = operationsReducer(state, {
+    type: 'verify',
+    reportId: 'r1',
+    time: time + 60000,
+    id: 'v1',
+  });
+  assert.equal(evidenceCoverage(state, 's1', time, seed).verified, 33);
+  assert.equal(evidenceCoverage(state, 's1', time + 60000, seed).verified, 67);
+  assert.equal(evidenceCoverage(state, 's1', time + 60000, seed).pending, 0);
+  assert.equal(evidenceCoverage(state, 's2', time + 60000, seed).verified, 50);
+  assert.equal(
+    operationsReducer(state, {
+      type: 'verify',
+      reportId: 'r1',
+      time: time + 120000,
+      id: 'v2',
+    }),
+    state,
+  );
+});
+void test('Objective presets follow specialty and selected area', () => {
+  const boat = objectivePresets('Boat team', 'Riverside');
+  const medical = objectivePresets('Medical', 'East bank');
+  assert.ok(boat.some((p) => /boat approach/i.test(p.text)));
+  assert.ok(medical.some((p) => /medical/i.test(p.text)));
+  assert.ok(boat.every((p) => p.text.startsWith('Riverside:')));
+  assert.notDeepEqual(boat, medical);
 });
