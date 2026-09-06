@@ -23,7 +23,7 @@ ENGINE_LIMITATIONS: tuple[str, ...] = (
 def config_hash(config: dict | ForcingConfig) -> str:
     """Return 'sha256:' + sha256 of canonical json of forcing configuration."""
     if hasattr(config, "model_dump"):
-        data = config.model_dump(mode="json", exclude_none=True)
+        data = config.model_dump(mode="json", exclude_none=True, by_alias=True)
     else:
         data = config
     encoded = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -38,14 +38,14 @@ def make_run_id(scenario_id: str, mode: str, config_hash_val: str) -> str:
 def merge_forcing(defaults: dict, overrides: dict | None) -> dict:
     """Deep-merge overrides into defaults, replace lists wholesale, and validate against forcing-config."""
     if hasattr(defaults, "model_dump"):
-        d = defaults.model_dump(mode="json", exclude_none=True)
+        d = defaults.model_dump(mode="json", exclude_none=True, by_alias=True)
     else:
         d = copy.deepcopy(defaults)
 
     if overrides is None:
         o: dict[str, Any] = {}
     elif hasattr(overrides, "model_dump"):
-        o = overrides.model_dump(mode="json", exclude_none=True)
+        o = overrides.model_dump(mode="json", exclude_none=True, by_alias=True)
     else:
         o = overrides
 
@@ -79,7 +79,7 @@ def build_manifest(
     else:
         fc = merged_config
 
-    cfg_dict = fc.model_dump(mode="json", exclude_none=True)
+    cfg_dict = fc.model_dump(mode="json", exclude_none=True, by_alias=True)
     cfg_hash = config_hash(cfg_dict)
     run_id = make_run_id(scenario.scenario_id, mode, cfg_hash)
 
@@ -92,7 +92,14 @@ def build_manifest(
 
     limitations = list(ENGINE_LIMITATIONS)
     n_scale = float(fc.roughness.manning_n_scale) if fc.roughness is not None else 1.0
-    if n_scale != 1.0:
+    calibrated = bool(fc.roughness.gauge_calibration) if fc.roughness is not None else False
+    if calibrated:
+        limitations.append(
+            "Rating-curve conveyance is calibrated per gauge from observed discharge and gauge height and "
+            f"interpolated along the river (Manning n scale {n_scale:g} elsewhere); the fitted scales are in "
+            "calibration.json in the run directory."
+        )
+    elif n_scale != 1.0:
         limitations.append(
             f"Rating-curve conveyance is scaled by a Manning n scale of {n_scale:g} for stage and wave celerity, "
             "calibrated to gauge observations for this scenario; see the scenario's decision record."

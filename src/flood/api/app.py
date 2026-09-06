@@ -114,6 +114,10 @@ def create_app(settings: Settings | None = None, store: Any = None) -> FastAPI:
         start_time = time.perf_counter()
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        # Verifier pages are edited in place; without this browsers cache the module
+        # scripts heuristically and keep running stale code after a deploy.
+        if request.url.path.startswith("/verifier"):
+            response.headers["Cache-Control"] = "no-cache"
         log_line = json.dumps({
             "method": request.method,
             "path": request.url.path,

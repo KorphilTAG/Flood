@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 import shutil
 import threading
+import time
 from typing import Any
 
 import numpy as np
@@ -33,6 +34,25 @@ from flood.timing import StageTimer
 logger = logging.getLogger("flood.run")
 
 
+_CUBE_CACHE: dict[str, HandCube] = {}
+_CUBE_LOCK = threading.Lock()
+
+
+def load_cube_shared(cube_dir: Path) -> HandCube:
+    """One HandCube per cube directory per process.
+
+    The cube is read-only and about 1.2 GB for the reference corridor; every run of the
+    same scenario shares it instead of loading its own copy.
+    """
+    key = str(Path(cube_dir).resolve())
+    with _CUBE_LOCK:
+        cube = _CUBE_CACHE.get(key)
+        if cube is None:
+            cube = HandCube.load(cube_dir)
+            _CUBE_CACHE[key] = cube
+        return cube
+
+
 @dataclass(frozen=True)
 class ResolvedQuery:
     """Snapped and validated query."""
@@ -42,6 +62,11 @@ class ResolvedQuery:
     p_internal: datetime
     horizon_minutes: int
     requested: dict[str, str]
+
+
+def _parse_compact(name: str) -> datetime:
+    """Inverse of the product directory timestamp: 20250704T0945Z -> aware UTC datetime."""
+    return datetime.strptime(name, "%Y%m%dT%H%MZ").replace(tzinfo=timezone.utc)
 
 
 def _compact_timestamp(val: datetime | str | None) -> str:
@@ -85,6 +110,22 @@ class Run:
         self.record_end = pd.to_datetime(scenario.hydrology.record.end, utc=True).to_pydatetime()
         self.max_horizon_minutes = int(manifest.get("time", {}).get("max_horizon_minutes", 360))
 
+        # Conveyance scale: a per-catchment field fitted at the gauges when the config asks
+        # for it, else the scalar Manning n scale. Written once to calibration.json.
+        roughness = (manifest.get("forcing", {}).get("config", {}) or {}).get("roughness") or {}
+        self.n_scale_default = float(roughness.get("manning_n_scale", 1.0))
+        self.n_scale_field = None
+        if roughness.get("gauge_calibration"):
+            from flood.engine.calibration import build_conveyance_field
+
+            self.n_scale_field = build_conveyance_field(cube, store.usgs, scenario, self.n_scale_default)
+            calib_path = self.run_dir / "calibration.json"
+            if not calib_path.exists():
+                try:
+                    calib_path.write_text(json.dumps(self.n_scale_field.as_dict(), indent=2), encoding="utf-8")
+                except OSError:
+                    pass
+
         # In-memory LRU cache of RoutedSeries, maxsize=8
         self._routed_cache: OrderedDict[datetime, RoutedSeries] = OrderedDict()
         # One heavy computation at a time per run: concurrent requests queue instead of
@@ -92,6 +133,10 @@ class Run:
         self._lock = threading.RLock()
         self._state_cache: OrderedDict[tuple, tuple[StateArrays, dict]] = OrderedDict()
         self._reaches_cache: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
+        self._precomputed_index: tuple[dict[datetime, list[datetime]], list[datetime]] | None = None
+        self._precomputed_index_at = 0.0
+        self._precomputed_index: tuple[dict[datetime, list[datetime]], list[datetime]] | None = None
+        self._precomputed_index_at = 0.0
 
     def resolve(self, p: datetime | str | None, t: datetime | str) -> ResolvedQuery:
         """Resolve, snap, and validate a (p, t) query against the scenario record and horizon."""
@@ -130,6 +175,93 @@ class Run:
             requested=requested,
         )
 
+    @property
+    def n_scale(self):
+        """What map_member takes: the calibrated field when present, else the scalar scale."""
+        return self.n_scale_field if self.n_scale_field is not None else self.n_scale_default
+
+    def precomputed_index(self) -> tuple[dict[datetime, list[datetime]], list[datetime]]:
+        """Cutoffs and target times that have a depth raster on disk, plus hindsight targets.
+
+        Rescanned at most every five seconds so a playing clock does not hammer the disk.
+        """
+        now = time.monotonic()
+        if self._precomputed_index is not None and now - self._precomputed_index_at < 5.0:
+            return self._precomputed_index
+        forward: dict[datetime, list[datetime]] = {}
+        products = self.run_dir / "products"
+        if products.is_dir():
+            for p_dir in products.iterdir():
+                if not (p_dir.is_dir() and p_dir.name.startswith("p=")):
+                    continue
+                try:
+                    p_dt = _parse_compact(p_dir.name[2:])
+                except ValueError:
+                    continue
+                ts = []
+                for t_dir in p_dir.iterdir():
+                    if t_dir.is_dir() and t_dir.name.startswith("t=") and (t_dir / "depth.tif").exists():
+                        try:
+                            ts.append(_parse_compact(t_dir.name[2:]))
+                        except ValueError:
+                            pass
+                if ts:
+                    forward[p_dt] = sorted(ts)
+        hindsight: list[datetime] = []
+        hdir = self.run_dir / "hindsight"
+        if hdir.is_dir():
+            for t_dir in hdir.iterdir():
+                if t_dir.is_dir() and t_dir.name.startswith("t=") and (t_dir / "depth.tif").exists():
+                    try:
+                        hindsight.append(_parse_compact(t_dir.name[2:]))
+                    except ValueError:
+                        pass
+        self._precomputed_index = (forward, sorted(hindsight))
+        self._precomputed_index_at = now
+        return self._precomputed_index
+
+    def resolve_precomputed(
+        self, p: datetime | str | None, t: datetime | str, max_back_minutes: int = 60
+    ) -> ResolvedQuery | None:
+        """Resolve to the nearest prewarmed product instead of computing.
+
+        Forward queries take the prewarmed cutoff at or before p (within max_back_minutes)
+        whose target times come closest to t, ties to the most recent cutoff; hindsight
+        queries take the nearest prewarmed hindsight target. None when nothing qualifies.
+        The returned query keeps the caller's original request.
+        """
+        res = self.resolve(p, t)
+        forward, hindsight = self.precomputed_index()
+        if res.mode == "hindsight":
+            if not hindsight:
+                return None
+            t_best = min(hindsight, key=lambda x: abs((x - res.t).total_seconds()))
+            return ResolvedQuery(
+                mode="hindsight", p=None, t=t_best, p_internal=res.p_internal,
+                horizon_minutes=0, requested=res.requested,
+            )
+        # Prefer a prewarmed pair with the requested horizon (so a +30 request is not
+        # quietly answered with +60), then the closest target time, then the most recent cutoff.
+        want_h = float(res.horizon_minutes)
+        best: tuple[tuple[float, float, float], datetime, datetime] | None = None
+        for p_c, ts in forward.items():
+            back = (res.p - p_c).total_seconds() / 60.0
+            if back < 0 or back > max_back_minutes:
+                continue
+            for t_c in ts:
+                h_c = (t_c - p_c).total_seconds() / 60.0
+                score = (abs(h_c - want_h), abs((t_c - res.t).total_seconds()), back)
+                if best is None or score < best[0]:
+                    best = (score, p_c, t_c)
+        if best is None:
+            return None
+        _, p_c, t_c = best
+        horizon = int(round((t_c - p_c).total_seconds() / 60.0))
+        return ResolvedQuery(
+            mode="nowcast" if horizon == 0 else "forecast", p=p_c, t=t_c, p_internal=p_c,
+            horizon_minutes=horizon, requested=res.requested,
+        )
+
     def routed(self, p_internal: datetime) -> RoutedSeries:
         """Fetch or compute the RoutedSeries for p_internal from an LRU cache of size 8."""
         if p_internal.tzinfo is None:
@@ -164,6 +296,7 @@ class Run:
             members=MEMBERS,
             max_horizon_minutes=self.max_horizon_minutes,
             warmup_minutes=360,
+            n_scale_field=self.n_scale_field,
         )
 
         self._routed_cache[p_dt] = routed_series
@@ -295,8 +428,7 @@ class Run:
             with st.stage("hand_mapping"):
                 q_at_t = routed_series.at(t_target)
                 fids = routed_series.feature_ids
-                roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-                n_scale = float(roughness.get("manning_n_scale", 1.0))
+                n_scale = self.n_scale
 
                 q_low = {fid: float(q_at_t[0, i]) for i, fid in enumerate(fids)}
                 low_mf = map_member(self.cube, q_low, n_scale=n_scale, with_velocity=False)
@@ -425,8 +557,7 @@ class Run:
         q_at_t = routed.at(res.t)
         fids = routed.feature_ids
         q_mid = {fid: float(q_at_t[1, i]) for i, fid in enumerate(fids)}
-        roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-        n_scale = float(roughness.get("manning_n_scale", 1.0))
+        n_scale = self.n_scale
         mid_mf = map_member(self.cube, q_mid, n_scale=n_scale, with_velocity=True)
         return build_reaches(self, routed, res.t, mid_mf)
 
@@ -463,8 +594,7 @@ class Run:
 
         routed = self.routed(p_snapped)
         fids = routed.feature_ids
-        roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-        n_scale = float(roughness.get("manning_n_scale", 1.0))
+        n_scale = self.n_scale
 
         series = []
         for tau in taus:
@@ -497,10 +627,10 @@ class Run:
         runs_dir = Path(runs_dir)
         data_dir = Path(data_dir)
 
-        defaults = scenario.forcing_defaults.model_dump(mode="json", exclude_none=True)
+        defaults = scenario.forcing_defaults.model_dump(mode="json", exclude_none=True, by_alias=True)
         merged = merge_forcing(defaults, overrides)
         fc = ForcingConfig.model_validate(merged)
-        cfg_dict = fc.model_dump(mode="json", exclude_none=True)
+        cfg_dict = fc.model_dump(mode="json", exclude_none=True, by_alias=True)
         cfg_hash = config_hash(cfg_dict)
 
         run_id = make_run_id(scenario.scenario_id, mode, cfg_hash)
@@ -508,7 +638,7 @@ class Run:
         run_json_path = run_dir / "run.json"
 
         cube_dir = data_dir / "cube" / scenario.scenario_id
-        cube = HandCube.load(cube_dir)
+        cube = load_cube_shared(cube_dir)
         store = load_forcing_store(scenario, data_dir)
 
         if run_json_path.exists():
@@ -573,7 +703,7 @@ class Run:
             raise FileNotFoundError(f"Scenario file for {scenario_id} could not be located")
 
         cube_dir = data_dir / "cube" / scenario_id
-        cube = HandCube.load(cube_dir)
+        cube = load_cube_shared(cube_dir)
         store = load_forcing_store(scenario, data_dir)
 
         return cls(

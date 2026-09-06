@@ -90,6 +90,9 @@ class RoutingConfig(BaseContractModel):
 
 class RoughnessConfig(BaseContractModel):
     manning_n_scale: float = Field(default=1.0, gt=0)
+    # Fit a scale per scenario gauge from observed discharge and gauge height and propagate
+    # it along the network; manning_n_scale remains the default for uncalibrated stretches.
+    gauge_calibration: bool = False
 
 
 class GaugeOutageOverride(BaseContractModel):

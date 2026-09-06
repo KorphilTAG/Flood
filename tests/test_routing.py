@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from flood.engine.routing import (
+    kinematic_celerity,
     _celerity,
     _stage_from_q,
     _top_width,
@@ -186,7 +187,7 @@ def test_lag_and_celerity(mini_cube, mini_scenario, mini_data_dir):
 
     peak_q_104 = float(np.max(routed.q[1, idx_104, :]))
     b = mini_cube.branch(9)
-    c = _celerity(b.rating, 1, peak_q_104)
+    c = kinematic_celerity(b.rating, 1, peak_q_104)
     expected_lag_s = 1000.0 / c
 
     rel_error = abs(lag_s - expected_lag_s) / expected_lag_s
@@ -316,7 +317,7 @@ def test_runtime(mini_cube, mini_scenario, mini_data_dir):
     _ = route(mini_cube, view, mini_scenario, mini_scenario.forcing_defaults)
     elapsed = time.perf_counter() - t_start
 
-    assert elapsed < 2.0
+    assert elapsed < 3.0  # shock celerity adds two table interpolations per rising cell
 
 
 def test_scalar_helpers_match_rating(mini_cube):

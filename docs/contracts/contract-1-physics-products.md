@@ -126,6 +126,8 @@ Schema: [forcing-config.schema.json](schemas/forcing-config.schema.json). The sc
 | `boundary_forecast.relax_minutes` | Time constant over which the continued trend decays to a plateau. |
 | `routing.method`, `routing.dt_minutes` | `none` or `muskingum_cunge`; time step. |
 | `roughness.manning_n_scale` | Multiplier applied to hydrotable discharge as a crude roughness sensitivity. |
+
+Roughness also accepts `gauge_calibration` (boolean, default false): fit a Manning n scale per scenario gauge from observed discharge and gauge height and interpolate it along the river, with `manning_n_scale` as the default elsewhere (decision 0010). Stalled gauges are declared with `scenario_overrides` entries of type `gauge_outage`.
 | `scenario_overrides[]` | `gauge_outage` (gauge_ref, from, optional to) drops observations from `p` onward; `reach_scale` (reach_ref, factor, from, to) scales inflow on a reach for what-if runs. |
 
 ## 9. Engine API

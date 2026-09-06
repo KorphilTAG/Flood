@@ -4,7 +4,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timedelta, timezone
 import math
-from typing import Sequence
+from typing import Any, Sequence
 import numpy as np
 import pandas as pd
 
@@ -22,25 +22,71 @@ from flood.interfaces import (
 )
 
 
-_CELERITY_CACHE: dict[tuple[int, int], np.ndarray] = {}
-_SCALED_RATING_CACHE: dict[tuple[int, float], RatingTable] = {}
+# Module caches are keyed by object identity and store the keyed object alongside the
+# value, so a recycled id() after garbage collection can never return a stale entry.
+_CELERITY_CACHE: dict[tuple[int, int], tuple[RatingTable, np.ndarray]] = {}
+_SCALED_RATING_CACHE: dict[tuple, tuple[RatingTable, object, RatingTable]] = {}
+_AREA_CACHE: dict[tuple[int, int], tuple[RatingTable, np.ndarray, np.ndarray]] = {}
 
 
-def _scaled_rating(rt: RatingTable, n_scale: float) -> RatingTable:
+def _scaled_rating(rt: RatingTable, n_scale: float | np.ndarray) -> RatingTable:
     """Rating table with discharge divided by the Manning n scale, cached per table and scale.
 
     The scale multiplies conveyance, so both stage (in mapping) and kinematic celerity
-    dQ/dA (here) respond consistently. Cached so the celerity cache keyed by table
-    identity keeps working across route calls.
+    dQ/dA (here) respond consistently. n_scale is a scalar or a per-catchment array.
+    Cached so the celerity cache keyed by table identity keeps working across route calls.
     """
-    if n_scale == 1.0:
+    scalar = np.ndim(n_scale) == 0
+    if scalar and float(n_scale) == 1.0:
         return rt
-    key = (id(rt), float(n_scale))
-    scaled = _SCALED_RATING_CACHE.get(key)
-    if scaled is None:
-        scaled = dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
-        _SCALED_RATING_CACHE[key] = scaled
+    key: tuple = (id(rt), float(n_scale)) if scalar else (id(rt), id(n_scale))
+    entry = _SCALED_RATING_CACHE.get(key)
+    if entry is not None and entry[0] is rt and (scalar or entry[1] is n_scale):
+        return entry[2]
+    scaled = dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
+    _SCALED_RATING_CACHE[key] = (rt, n_scale, scaled)
     return scaled
+
+
+def _area_of_q(rt: RatingTable, cidx: int, q: float) -> float:
+    """Wetted area at discharge q from the table row (linear in the table)."""
+    key = (id(rt), cidx)
+    entry = _AREA_CACHE.get(key)
+    if entry is None or entry[0] is not rt:
+        entry = (rt, rt.q_cms[cidx], rt.wet_area_m2[cidx])
+        _AREA_CACHE[key] = entry
+    return float(np.interp(q, entry[1], entry[2]))
+
+
+# Kinematic celerity of a wide channel with Manning friction is c = (5/3) V. FIM's synthetic
+# rating curves lump channel and floodplain into one section, so on the floodplain their
+# tangent dQ/dA falls to about V or below while the conveying channel still moves the
+# wave at (5/3) V; observed fronts on the reference corridor travel at 2.5 to 3 m/s where
+# the tables give 1 to 2. The wide-channel value is therefore used as a floor.
+KINEMATIC_BETA = 5.0 / 3.0
+
+
+def kinematic_celerity(rt: RatingTable, cidx: int, q: float) -> float:
+    """Celerity at discharge q: the larger of the table's dQ/dA and the Manning wide-channel (5/3) Q/A."""
+    c = _celerity(rt, cidx, q)
+    a = _area_of_q(rt, cidx, q)
+    if a > 0.0 and q > 0.0:
+        c = max(c, KINEMATIC_BETA * q / a)
+    return float(np.clip(c, 0.1, 10.0))
+
+
+def _shock_celerity(rt: RatingTable, cidx: int, q_hi: float, q_lo: float) -> float | None:
+    """Kinematic shock speed (Q_hi - Q_lo) / (A_hi - A_lo) between two flow states.
+
+    On a rising limb the leading face of a flood steepens into a kinematic shock
+    (Lighthill and Whitham 1955); its speed is this secant of the rating curve, not the
+    local dQ/dA that the tangent celerity gives at the low flow ahead of the front.
+    """
+    a_hi = _area_of_q(rt, cidx, q_hi)
+    a_lo = _area_of_q(rt, cidx, q_lo)
+    if a_hi - a_lo <= 1e-6:
+        return None
+    return (q_hi - q_lo) / (a_hi - a_lo)
 
 
 # Scalar rating helpers. These deliberately duplicate the definitions in
@@ -69,11 +115,12 @@ def _top_width(rt: RatingTable, cidx: int, stage: float) -> float:
 def _celerity(rt: RatingTable, cidx: int, q: float) -> float:
     q_row = rt.q_cms[cidx]
     key = (id(rt), cidx)
-    dq_da = _CELERITY_CACHE.get(key)
-    if dq_da is None:
+    entry = _CELERITY_CACHE.get(key)
+    if entry is None or entry[0] is not rt:
         a_row = rt.wet_area_m2[cidx]
-        dq_da = np.gradient(q_row, a_row)
-        _CELERITY_CACHE[key] = dq_da
+        entry = (rt, np.gradient(q_row, a_row))
+        _CELERITY_CACHE[key] = entry
+    dq_da = entry[1]
     c = float(np.interp(q, q_row, dq_da))
     return float(np.clip(c, 0.1, 10.0))
 
@@ -85,13 +132,25 @@ def mc_params(
     length_m: float,
     slope: float,
     dt_s: float,
+    q_out_prev: float | None = None,
 ) -> tuple[float, float]:
-    """Compute Muskingum-Cunge parameters (K, X) from rating table or fallback."""
+    """Compute Muskingum-Cunge parameters (K, X) from the rating table or a fallback.
+
+    q_ref is the reference discharge (the three-point average of the cell's known flows in
+    the variable-parameter method). When q_out_prev is given and the cell is on a rising
+    limb (q_ref clearly above the previous outflow) the celerity is the kinematic shock
+    speed between the two states instead of the tangent celerity at q_ref, so the front
+    travels at the speed of the flood behind it rather than of the trickle ahead of it.
+    """
     if rt is None or cidx == -1:
         c = (1.0 / 0.06) * (1.0 ** (2.0 / 3.0)) * math.sqrt(max(slope, 1e-6)) * (5.0 / 3.0)
         B = 10.0
     else:
-        c = _celerity(rt, cidx, q_ref)
+        c = kinematic_celerity(rt, cidx, q_ref)
+        if q_out_prev is not None and q_ref > q_out_prev + max(0.5, 0.05 * q_out_prev):
+            c_shock = _shock_celerity(rt, cidx, q_ref, max(q_out_prev, 0.0))
+            if c_shock is not None:
+                c = max(c, c_shock)
         stage, _ = _stage_from_q(rt, cidx, q_ref)
         B = _top_width(rt, cidx, stage)
 
@@ -192,6 +251,7 @@ def route(
     members: Sequence[str] = MEMBERS,
     max_horizon_minutes: int = 360,
     warmup_minutes: int = 360,
+    n_scale_field: Any = None,
 ) -> RoutedSeries:
     """Route flow through the reach network producing a RoutedSeries."""
     p = view.p
@@ -227,7 +287,12 @@ def route(
     dt_minutes = float(config.routing.dt_minutes)
     dt_s = dt_minutes * 60.0
     roughness = getattr(config, "roughness", None)
-    n_scale = float(roughness.manning_n_scale) if roughness is not None else 1.0
+    n_scale_default = float(roughness.manning_n_scale) if roughness is not None else 1.0
+
+    def _branch_scale(branch_id: int):
+        if n_scale_field is not None:
+            return n_scale_field.scale_for_branch(branch_id)
+        return n_scale_default
     total_seconds = int(round((t_end - warmup_start).total_seconds()))
     step_seconds = int(round(dt_s))
     num_steps = max(1, total_seconds // step_seconds + 1)
@@ -310,10 +375,43 @@ def route(
         if cidx != -1:
             try:
                 b = cube.branch(pref_branch)
-                rt = _scaled_rating(b.rating, n_scale)
+                rt = _scaled_rating(b.rating, _branch_scale(pref_branch))
             except KeyError:
                 cidx = -1
         reach_params.append((rt, cidx, length_m, slope))
+
+    # Reaches without a rating row (connectors HAND has no catchment for) borrow the
+    # hydraulics of the nearest rated reach, upstream first, then downstream. Left to the
+    # slope-only fallback, a 400 m connector with a recorded slope of zero becomes a
+    # 0.1 m/s reservoir that delays and flattens the whole flood wave behind it.
+    downstream_index: dict[int, int] = {}
+    for idx in range(n_reaches):
+        for u in upstream_indices[idx]:
+            downstream_index[u] = idx
+    for idx in range(n_reaches):
+        rt, cidx, length_m, slope = reach_params[idx]
+        if cidx != -1:
+            continue
+        donor = None
+        frontier, seen = list(upstream_indices[idx]), {idx}
+        while frontier and donor is None:
+            u = frontier.pop(0)
+            if u in seen:
+                continue
+            seen.add(u)
+            if reach_params[u][1] != -1:
+                donor = u
+            else:
+                frontier.extend(upstream_indices[u])
+        d = downstream_index.get(idx)
+        while donor is None and d is not None and d not in seen:
+            seen.add(d)
+            if reach_params[d][1] != -1:
+                donor = d
+            d = downstream_index.get(d)
+        if donor is not None:
+            d_rt, d_cidx, _, d_slope = reach_params[donor]
+            reach_params[idx] = (d_rt, d_cidx, length_m, slope if slope > 1e-4 else d_slope)
 
     relax_min = float(config.boundary_forecast.relax_minutes)
     trend_win_min = int(config.boundary_forecast.trend_window_minutes)
@@ -365,7 +463,10 @@ def route(
                 else:
                     q_in_prev = float(sim_q_in[idx, step_i - 1])
                     q_out_prev = float(sim_uncontrolled[idx, step_i - 1])
-                    K, X = mc_params(rt, cidx, max(inflow, 1e-4), length_m, slope, dt_s)
+                    # Three-point reference discharge (variable-parameter Muskingum-Cunge);
+                    # the shock branch inside mc_params takes over on rising limbs.
+                    q_ref = max((q_in_prev + inflow + q_out_prev) / 3.0, 1e-4)
+                    K, X = mc_params(rt, cidx, q_ref, length_m, slope, dt_s, q_out_prev=q_out_prev)
                     routed_val = mc_step(q_in_prev, inflow, q_out_prev, K, X, dt_s)
 
                 sim_uncontrolled[idx, step_i] = routed_val

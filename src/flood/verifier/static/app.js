@@ -29,6 +29,7 @@ export const state = {
   band: 'depth_mid',
   showProb: false,
   showDiff: false,
+  precomputedOnly: true, // ask for the nearest prewarmed product; never start a computation
 
   // Scenario context
   scenarioId: null,
@@ -134,9 +135,16 @@ export function clearError() {
 /**
  * Safe fetch JSON wrapper: never throws uncaught errors
  */
+/** Add precomputed=1 to product requests when the page is in prewarmed-only mode. */
+function withPrecomputed(url) {
+  if (!state.precomputedOnly) return url;
+  if (!/\/runs\/[^/]+\/(state|reaches|gauges|overlay\.png|tte)\?/.test(url)) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'precomputed=1';
+}
+
 export async function safeFetchJson(url, options = {}) {
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(withPrecomputed(url), options);
     if (!res.ok) {
       let errBody = null;
       try {
@@ -255,7 +263,7 @@ function bucketKey() {
   const step = 5 * 60 * 1000;
   const floor = (iso) => new Date(Math.floor(new Date(iso).getTime() / step) * step).toISOString();
   const nearest = (iso) => new Date(Math.round(new Date(iso).getTime() / step) * step).toISOString();
-  return `${state.runId}|${state.mode}|${floor(p)}|${nearest(t)}|${state.band}|${state.showProb}|${state.showDiff}`;
+  return `${state.runId}|${state.mode}|${floor(p)}|${nearest(t)}|${state.band}|${state.showProb}|${state.showDiff}|${state.precomputedOnly}`;
 }
 
 /**
@@ -464,7 +472,7 @@ function removeProbOverlay() {
  */
 async function loadOverlayImage(url, signal) {
   try {
-    const resp = await fetch(url, { signal });
+    const resp = await fetch(withPrecomputed(url), { signal });
     if (!resp.ok) {
       let errBody = null;
       try {
@@ -860,7 +868,10 @@ export function renderTimingReadout(stateData) {
 
   const isHit = stateData.cache === 'hit';
   const badgeClass = isHit ? 'cache-hit' : 'cache-miss';
-  const cacheBadge = `<span class="timing-badge ${badgeClass}">Cache: ${escapeHtml(stateData.cache || 'unknown')}</span>`;
+  const servedP = stateData.p == null ? 'hindsight' : stateData.p;
+  const snapped = stateData.requested && (stateData.requested.p !== servedP || stateData.requested.t !== stateData.t);
+  const served = snapped ? ` (served ${escapeHtml(servedP)} → ${escapeHtml(stateData.t)})` : '';
+  const cacheBadge = `<span class="timing-badge ${badgeClass}">Cache: ${escapeHtml(stateData.cache || 'unknown')}${served}</span>`;
 
   const stages = stateData.compute_ms;
   const stageEntries = Object.entries(stages)
@@ -1147,6 +1158,16 @@ export function setupEventListeners() {
   if (bandSel) {
     bandSel.addEventListener('change', (e) => {
       state.band = e.target.value;
+      scheduleUpdate();
+    });
+  }
+
+  // Prewarmed-only toggle
+  const precomputedToggle = document.getElementById('precomputed-toggle');
+  if (precomputedToggle) {
+    precomputedToggle.checked = state.precomputedOnly;
+    precomputedToggle.addEventListener('change', (e) => {
+      state.precomputedOnly = e.target.checked;
       scheduleUpdate();
     });
   }
