@@ -1,6 +1,7 @@
 """Muskingum-Cunge reach routing with gauge controls and boundary forecasts."""
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timedelta, timezone
 import math
 from typing import Sequence
@@ -10,6 +11,7 @@ import pandas as pd
 from flood.contracts.models import ForcingConfig, Scenario
 from flood.engine.boundary import _interp_series, trend_relax
 from flood.engine.cube import HandCube
+from flood.engine.rating import apply_n_scale
 from flood.interfaces import (
     ForcingView,
     MEMBERS,
@@ -21,6 +23,24 @@ from flood.interfaces import (
 
 
 _CELERITY_CACHE: dict[tuple[int, int], np.ndarray] = {}
+_SCALED_RATING_CACHE: dict[tuple[int, float], RatingTable] = {}
+
+
+def _scaled_rating(rt: RatingTable, n_scale: float) -> RatingTable:
+    """Rating table with discharge divided by the Manning n scale, cached per table and scale.
+
+    The scale multiplies conveyance, so both stage (in mapping) and kinematic celerity
+    dQ/dA (here) respond consistently. Cached so the celerity cache keyed by table
+    identity keeps working across route calls.
+    """
+    if n_scale == 1.0:
+        return rt
+    key = (id(rt), float(n_scale))
+    scaled = _SCALED_RATING_CACHE.get(key)
+    if scaled is None:
+        scaled = dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
+        _SCALED_RATING_CACHE[key] = scaled
+    return scaled
 
 
 # Scalar rating helpers. These deliberately duplicate the definitions in
@@ -206,6 +226,8 @@ def route(
 
     dt_minutes = float(config.routing.dt_minutes)
     dt_s = dt_minutes * 60.0
+    roughness = getattr(config, "roughness", None)
+    n_scale = float(roughness.manning_n_scale) if roughness is not None else 1.0
     total_seconds = int(round((t_end - warmup_start).total_seconds()))
     step_seconds = int(round(dt_s))
     num_steps = max(1, total_seconds // step_seconds + 1)
@@ -288,7 +310,7 @@ def route(
         if cidx != -1:
             try:
                 b = cube.branch(pref_branch)
-                rt = b.rating
+                rt = _scaled_rating(b.rating, n_scale)
             except KeyError:
                 cidx = -1
         reach_params.append((rt, cidx, length_m, slope))

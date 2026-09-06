@@ -1,6 +1,8 @@
 """Reach and gauge table construction and contract-validated serialization."""
 from __future__ import annotations
 
+import dataclasses
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import numpy as np
@@ -8,9 +10,23 @@ import pandas as pd
 
 from flood.contracts.validate import validate_json
 from flood.engine.forcing import ParquetForcingView
-from flood.engine.rating import stage_from_q, wet_area
+from flood.engine.rating import apply_n_scale, stage_from_q, wet_area
 from flood.interfaces import RoutedSeries, SOURCE_CODES
 from flood.timegrid import grid_range, parse_iso, to_iso
+
+
+def run_n_scale(run: Any) -> float:
+    """Manning n scale from the run's forcing config (1.0 when absent)."""
+    manifest = getattr(run, "manifest", None) or {}
+    roughness = ((manifest.get("forcing") or {}).get("config") or {}).get("roughness") or {}
+    return float(roughness.get("manning_n_scale", 1.0))
+
+
+def scaled_rating(rt: Any, n_scale: float) -> Any:
+    """Rating table with discharge divided by the Manning n scale, as mapping and routing use it."""
+    if rt is None or n_scale == 1.0:
+        return rt
+    return dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
 
 
 def build_reaches(
@@ -32,6 +48,7 @@ def build_reaches(
         p_dt = p_dt.astimezone(timezone.utc)
 
     cube = run.cube
+    n_scale = run_n_scale(run)
     network = cube.network
     aoi_network = network[network["in_aoi"].astype(bool)].copy()
     aoi_network = aoi_network.sort_values(by="feature_id").reset_index(drop=True)
@@ -59,7 +76,7 @@ def build_reaches(
 
     for branch in cube.branches:
         bid = branch.branch_id
-        rt = branch.rating
+        rt = scaled_rating(branch.rating, n_scale)
         mask = (pref_branches == bid) & (rep_cidxs >= 0)
         indices = np.where(mask)[0]
         if len(indices) == 0:
@@ -94,7 +111,7 @@ def build_reaches(
 
         for branch in cube.branches:
             bid = branch.branch_id
-            rt = branch.rating
+            rt = scaled_rating(branch.rating, n_scale)
             mask = (pref_branches == bid) & (rep_cidxs >= 0)
             indices = np.where(mask)[0]
             if len(indices) == 0:
@@ -213,7 +230,7 @@ def build_gauges(
             pref_branch = int(net_match["preferred_branch"].iloc[0])
             rep_cidx = int(net_match["representative_cidx"].iloc[0])
             try:
-                rt = run.cube.branch(pref_branch).rating if rep_cidx >= 0 else None
+                rt = scaled_rating(run.cube.branch(pref_branch).rating, run_n_scale(run)) if rep_cidx >= 0 else None
             except KeyError:
                 rt = None
         else:

@@ -130,7 +130,7 @@
       "dt_minutes": 5
     },
     "roughness": {
-      "manning_n_scale": 1.0
+      "manning_n_scale": 0.5
     },
     "scenario_overrides": []
   },

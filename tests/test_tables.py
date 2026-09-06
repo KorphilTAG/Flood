@@ -33,6 +33,27 @@ def mini_run_ctx(mini_cube, mini_scenario, mini_data_dir):
     return DummyRun(mini_cube, mini_scenario, store)
 
 
+def test_reach_stage_follows_manning_scale(mini_run_ctx):
+    """The reach table uses the same scaled rating as mapping: a scale below 1 lowers stage for the same flow."""
+    p = datetime(2025, 1, 1, 4, 0, tzinfo=timezone.utc)
+    t = datetime(2025, 1, 1, 6, 0, tzinfo=timezone.utc)
+    view = ParquetForcingView(
+        mini_run_ctx.scenario, mini_run_ctx.store, p,
+        network=mini_run_ctx.cube.network, gauges=mini_run_ctx.cube.gauges,
+    )
+    routed = route(mini_run_ctx.cube, view, mini_run_ctx.scenario, mini_run_ctx.scenario.forcing_defaults, members=MEMBERS)
+    base = build_reaches(mini_run_ctx, routed, t).set_index("feature_id")
+    mini_run_ctx.manifest = {"forcing": {"config": {"roughness": {"manning_n_scale": 0.5}}}}
+    try:
+        scaled = build_reaches(mini_run_ctx, routed, t).set_index("feature_id")
+    finally:
+        del mini_run_ctx.manifest
+    wet = base.index[base["q_mid_cms"] > 0.5]
+    assert len(wet) > 0
+    assert (scaled.loc[wet, "stage_mid_m"] < base.loc[wet, "stage_mid_m"]).all()
+    assert (scaled.loc[wet, "velocity_ms"] > base.loc[wet, "velocity_ms"]).all()
+
+
 def test_build_reaches_and_json(mini_run_ctx):
     p = datetime(2025, 1, 1, 4, 0, tzinfo=timezone.utc)
     t = datetime(2025, 1, 1, 6, 0, tzinfo=timezone.utc)

@@ -69,3 +69,11 @@ def test_build_manifest(mini_scenario):
         assert item in manifest["limitations"]
     # Junction inference check
     assert any("Tributary 102 inference at 103" in lim for lim in manifest["limitations"])
+    # A Manning n scale other than 1 is disclosed as a limitation and changes the run id.
+    scaled = build_manifest(
+        mini_scenario, "replay", {**defaults, "roughness": {"manning_n_scale": 0.5}}, grid, "0.1.0"
+    )
+    validate_json("run-manifest", scaled)
+    assert any("Manning n scale of 0.5" in lim for lim in scaled["limitations"])
+    assert scaled["run_id"] != manifest["run_id"]
+    assert not any("Manning n scale" in lim for lim in manifest["limitations"])

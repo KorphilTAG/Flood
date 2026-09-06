@@ -193,6 +193,28 @@ def test_lag_and_celerity(mini_cube, mini_scenario, mini_data_dir):
     assert rel_error <= 0.50
 
 
+def test_n_scale_speeds_wave(mini_cube, mini_scenario, mini_data_dir):
+    """A Manning n scale below 1 raises conveyance: the peak reaches 104 sooner and no lower."""
+    from flood.contracts.models import ForcingConfig
+
+    p = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    base_cfg = mini_scenario.forcing_defaults
+    fast_cfg = ForcingConfig.model_validate(
+        {**base_cfg.model_dump(mode="json"), "roughness": {"manning_n_scale": 0.5}}
+    )
+    base = route(mini_cube, FixtureForcingView(mini_data_dir, p), mini_scenario, base_cfg)
+    fast = route(mini_cube, FixtureForcingView(mini_data_dir, p), mini_scenario, fast_cfg)
+
+    fids = list(base.feature_ids)
+    i103, i104 = fids.index(103), fids.index(104)
+    lag_base = _find_peak_time_s(base.taus, base.q[1, i104, :]) - _find_peak_time_s(base.taus, base.q[1, i103, :])
+    lag_fast = _find_peak_time_s(fast.taus, fast.q[1, i104, :]) - _find_peak_time_s(fast.taus, fast.q[1, i103, :])
+    assert 0 < lag_fast < lag_base
+    # Gauge-controlled reach 103 is unchanged; the routed peak at 104 is not attenuated more.
+    assert np.allclose(fast.q[1, i103, :], base.q[1, i103, :])
+    assert float(np.max(fast.q[1, i104, :])) >= 0.95 * float(np.max(base.q[1, i104, :]))
+
+
 def test_member_ordering(mini_cube, mini_scenario, mini_data_dir):
     """Members: at reach 101 for tau > 03:55Z, q[low] <= q[mid] <= q[high] with strict inequality at 04:30Z; equal <= 03:55Z."""
     p = datetime(2025, 1, 1, 4, 0, tzinfo=timezone.utc)

@@ -91,6 +91,12 @@ def build_manifest(
         created_at_str = str(created_at)
 
     limitations = list(ENGINE_LIMITATIONS)
+    n_scale = float(fc.roughness.manning_n_scale) if fc.roughness is not None else 1.0
+    if n_scale != 1.0:
+        limitations.append(
+            f"Rating-curve conveyance is scaled by a Manning n scale of {n_scale:g} for stage and wave celerity, "
+            "calibrated to gauge observations for this scenario; see the scenario's decision record."
+        )
     for ji in scenario.hydrology.junction_inferences:
         limitations.append(f"{ji.label} is inferred by mass balance, not observed.")
 
