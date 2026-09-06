@@ -2,7 +2,7 @@
 
 - Slug: run-orchestrator-products
 - Spec: `pipeline/features/run-orchestrator-products/spec.md`
-- Status: in progress
+- Status: complete (fix-up pass finished the record)
 
 ## Summary
 
@@ -42,6 +42,13 @@ Implementing Run orchestrator, manifest generation, reach and gauge tables, rast
 
 ## How to verify
 
+Recorded by the fix-up pass. Worktree suite at merge time: `97 passed`. Master after integration: `137 passed`.
+
+Reference-corridor measurement (corrected cube, USGS-only forcing), from the verifier's timing readout and standalone probes: first `(p, t)` state about 30 s cold (routing 19 to 26 s, three-member mapping 5.7 s, reduce 1.2 s); hindsight state 102 s (routing 86 s over the full record). Per-member mapping 11.1 s before the mapping fix-up, 2.5 s after. Details and the decision in `docs/decisions/0003-compute-strategy-measure-before-choosing.md`.
+
 ## Residual risk
+
+- The developer session's own Kerr measurement ran against a cube built before the HydroID prefix fix and the corrected AOI, so its products were all nodata; that run directory was deleted and rebuilt.
+- Routing cost on the reference corridor is the dominant latency; see decision 0003 for the optimisation order.
 
 ## Not done
