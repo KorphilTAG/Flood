@@ -219,7 +219,8 @@ class Run:
             else:
                 arrays, resp = self._compute_state(res, write)
             self._state_cache[key] = (arrays, resp)
-            while len(self._state_cache) > 6:
+            # Two full-grid states is about 0.8 GB on the reference corridor; six was 2.5 GB.
+            while len(self._state_cache) > 2:
                 self._state_cache.popitem(last=False)
             return arrays, resp
 
