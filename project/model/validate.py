@@ -98,6 +98,11 @@ def leave_one_incident_out(df, features, fit_predict, run_id, model_config,
 def load_table(path=None):
     path = path or os.path.join(os.path.dirname(__file__), "..", "data",
                                 "processed", "training_table.csv")
+    # A local pipeline run writes the plain .csv and that wins; a fresh clone
+    # has only the committed .csv.gz snapshot. Resolved inline rather than via
+    # scripts/common.py so the frozen harness keeps no dependency on the pulls.
+    if not os.path.exists(path) and os.path.exists(path + ".gz"):
+        path = path + ".gz"
     return pd.read_csv(path, dtype={"tract_fips": str, "fips_county": str},
                        low_memory=False)
 

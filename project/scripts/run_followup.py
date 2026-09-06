@@ -14,14 +14,14 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "model"))
 sys.path.insert(0, HERE)
-from common import LOGS, PROCESSED, RAW  # noqa: E402
+from common import LOGS, PROCESSED, RAW, table_path  # noqa: E402
 from train import make_knn, make_mlp  # noqa: E402
 from validate import INCIDENT_COL, leave_one_incident_out, load_table  # noqa: E402
 
 from scipy.stats import spearmanr  # noqa: E402
 
 LOG = os.path.join(LOGS, "model_tests_followup.log")
-OOF = os.path.join(PROCESSED, "oof_predictions.csv")
+OOF = table_path(os.path.join(PROCESSED, "oof_predictions.csv"))
 SECTIONS = []
 WAGG = []
 

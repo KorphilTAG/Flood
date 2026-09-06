@@ -27,6 +27,22 @@ TARGET_DISASTER = 4879
 KERR_COUNTY_FIPS = "48265"
 
 
+def table_path(path):
+    """Resolve a derived-table path to the plain .csv, else the committed .csv.gz.
+
+    A local pipeline run writes uncompressed .csv and that wins. Only the
+    gzipped frozen snapshot is committed (see .gitignore), so a fresh clone
+    reads that instead and reproduces the recorded scores. pandas decompresses
+    by extension, so callers need no other change.
+    """
+    if os.path.exists(path):
+        return path
+    gz = path + ".gz"
+    if os.path.exists(gz):
+        return gz
+    raise FileNotFoundError(f"neither {path} nor {gz} exists")
+
+
 def get(url, params=None, tries=4, timeout=120, stream_bytes=False):
     """GET with exponential backoff. Returns Response, or raises after `tries`."""
     last = None

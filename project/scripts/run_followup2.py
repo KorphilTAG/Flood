@@ -14,7 +14,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "model"))
 sys.path.insert(0, HERE)
-from common import LOGS, PROCESSED  # noqa: E402
+from common import LOGS, PROCESSED, table_path  # noqa: E402
 from validate import load_table  # noqa: E402
 
 from scipy.stats import spearmanr, wilcoxon  # noqa: E402
@@ -32,7 +32,7 @@ def sp(p):
 
 def frame():
     df = load_table()
-    d = pd.read_csv(os.path.join(PROCESSED, "oof_predictions.csv"),
+    d = pd.read_csv(table_path(os.path.join(PROCESSED, "oof_predictions.csv")),
                     dtype={"tract_fips": str, "fips_county": str})
     return d.merge(df[["disasterNumber", "tract_fips", "rucc_2023"]],
                    on=["disasterNumber", "tract_fips"], how="left") \

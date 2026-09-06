@@ -12,3 +12,14 @@ tests/fixtures/mini_huc/out/
 
 # Manually acquired source PDFs, verified source manifests, and generated local AAR indices.
 # (covered by data/ above, called out here for clarity)
+
+# Frozen snapshot of the derived model tables. The raw pulls stay ignored --
+# they are re-fetchable from pinned public URLs -- but the OpenFEMA query is
+# not date-pinned, so these three are the only reproducibility record for the
+# scores in project/logs/final_summary.log. Loaders prefer a local .csv and
+# fall back to these.
+!project/data/
+project/data/*
+!project/data/processed/
+project/data/processed/*
+!project/data/processed/*.csv.gz
