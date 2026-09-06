@@ -41,8 +41,8 @@ export const state = {
   // Products and tables
   lastState: null,
   reachesData: [],
-  reachSortCol: 'reach_ref',
-  reachSortAsc: true,
+  reachSortCol: 'q_mid_cms',
+  reachSortAsc: false,
 };
 
 // Global handles
@@ -539,7 +539,10 @@ export function renderReachTable() {
   const sorted = [...state.reachesData].sort((a, b) => {
     let va = a[col];
     let vb = b[col];
-    if (va === vb) return 0;
+    if (va === vb) {
+      // gauged reaches first among equals, so the controlled rows are visible at the top
+      return (b.gauge_ref ? 1 : 0) - (a.gauge_ref ? 1 : 0);
+    }
     if (va == null) return 1;
     if (vb == null) return -1;
     if (typeof va === 'number' && typeof vb === 'number') {

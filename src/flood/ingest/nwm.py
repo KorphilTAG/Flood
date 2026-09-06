@@ -262,8 +262,13 @@ def ingest_nwm(
     data_dir: Path | str,
     keep_raw: bool = False,
     client: httpx.Client | None = None,
+    include_short_range: bool = True,
 ) -> None:
-    """Download, subset, and append NWM analysis and short-range files for a scenario."""
+    """Download, subset, and append NWM analysis and (optionally) short-range files for a scenario.
+
+    Short range is about six times the analysis volume (one file per lead hour per cycle);
+    pass include_short_range=False to get lateral inflow for ungauged reaches quickly.
+    """
     data_dir = Path(data_dir)
     scenario_id = scenario.scenario_id
     nwm_dir = data_dir / "nwm" / scenario_id
@@ -301,7 +306,7 @@ def ingest_nwm(
 
     # Short range
     sr_source = next((s for s in scenario.forcing_defaults.sources if s.type == "nwm_short_range"), None)
-    if sr_source is not None:
+    if sr_source is not None and include_short_range:
         sr_files = short_range_names(record_start, record_end, sr_source.max_lead_hours)
         for name in sr_files:
             if name in manifest:

@@ -27,7 +27,7 @@ def run_prep_forcing(args: argparse.Namespace) -> int:
 
     if not args.skip_nwm:
         try:
-            ingest_nwm(scenario, data_dir, keep_raw=args.keep_raw)
+            ingest_nwm(scenario, data_dir, keep_raw=args.keep_raw, include_short_range=not args.skip_short_range)
         except Exception as e:
             print(f"Error ingesting NWM forcing: {e}", file=sys.stderr)
             return 1
@@ -67,5 +67,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     forcing_parser.add_argument("--data-dir", default="data", help="Root directory for data (default: data)")
     forcing_parser.add_argument("--keep-raw", action="store_true", default=False, help="Keep raw NWM NetCDF files")
     forcing_parser.add_argument("--skip-nwm", action="store_true", default=False, help="Skip NWM ingest")
+    forcing_parser.add_argument("--skip-short-range", action="store_true", default=False, help="Ingest NWM analysis only (skip the much larger short-range forecast files)")
     forcing_parser.add_argument("--skip-usgs", action="store_true", default=False, help="Skip USGS ingest")
     forcing_parser.set_defaults(func=run_prep_forcing)
