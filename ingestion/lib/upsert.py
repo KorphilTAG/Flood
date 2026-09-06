@@ -11,11 +11,22 @@ GeoDataFrames without a live PostGIS instance -- see tests/test_upsert.py.
 `upsert_geodataframe` is the thin wrapper the live ingestion scripts call.
 """
 import json
+import math
 
 from shapely.geometry import mapping
 from sqlalchemy import text
 
 from lib.geo import make_feature_id
+
+
+def _json_safe(value):
+    """Map NaN/Infinity to None: valid JSON has no token for them, but
+    `json.dumps`'s default `allow_nan=True` emits the bare words `NaN`/
+    `Infinity` anyway, which Postgres's strict JSONB parser then rejects.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 CORE_COLUMNS = ["feature_id", "source", "source_id", "geom", "attributes"]
 
@@ -39,7 +50,7 @@ def rows_from_geodataframe(
         source_id = str(row[id_field])
         feature_id = make_feature_id(layer, source, source_id)
         attributes = {
-            col: row[col]
+            col: _json_safe(row[col])
             for col in gdf.columns
             if col not in ("geometry", id_field)
         }

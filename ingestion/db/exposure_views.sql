@@ -28,7 +28,7 @@ CREATE SCHEMA IF NOT EXISTS flood_exposure;
 
 -- crossing: point, id_field "crossing_id", attributes ["road_name"].
 -- road_name prefers the manually verified HMP name when a curator has supplied one
--- (schema.sql hmp_verified_name), falling back to the OSM name.
+-- (schema.sql hmp_verified_name), falling back to the normalized source road name.
 CREATE OR REPLACE VIEW flood_exposure.kerr_2025_07_04_crossing AS
 SELECT
     translate(regexp_replace(feature_id, '^[a-z_]+:', ''), ':/', '..') AS crossing_id,
@@ -51,14 +51,18 @@ SELECT
 FROM public.roads
 WHERE GeometryType(geom) IN ('LINESTRING', 'MULTILINESTRING');
 
--- structure: polygon, id_field "osm_id", attributes ["building"].
+-- structure: polygon, id_field "osm_id", attributes ["building"].  FEMA
+-- polygons are matched at ingest time to the frozen model's OSM centroid IDs.
+-- That source-derived alias is the matched row's ``source_id``; use it so
+-- Contract 2 facts join the static weights.
 CREATE OR REPLACE VIEW flood_exposure.kerr_2025_07_04_structure AS
 SELECT
-    translate(regexp_replace(feature_id, '^[a-z_]+:', ''), ':/', '..') AS osm_id,
+    source_id                           AS osm_id,
     attributes ->> 'building'       AS building,
     geom::geometry(Geometry, 4326)  AS geometry
 FROM public.buildings
-WHERE GeometryType(geom) IN ('POLYGON', 'MULTIPOLYGON');
+WHERE source = 'fema_static_match'
+  AND GeometryType(geom) IN ('POLYGON', 'MULTIPOLYGON');
 
 -- site: polygon, id_field "site_id", attributes ["name", "site_type", "occupancy_est"].
 -- public.camps ships empty (schema.sql): this view is correct and returns zero rows

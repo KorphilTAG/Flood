@@ -11,16 +11,15 @@ Usage:
 """
 import sys
 
-from lib.geo import boundary_polygon, overpass_bbox
+from lib.geo import boundary_polygon
 from lib.langchain_tools import (
     ArcGISFeatureServerTool,
     CensusTigerCountyBoundaryTool,
-    OverpassApiTool,
 )
+from scripts.ingest_fema_buildings import FEMA_BUILDINGS_FEATURE_SERVER_URL
 from scripts.ingest_nhd_flowlines import HUC8, NHD_FLOWLINE_FEATURE_SERVER_URL
-from scripts.ingest_osm_buildings import build_query as build_buildings_query
-from scripts.ingest_osm_crossings import build_query as build_crossings_query
 from scripts.ingest_txdot_roads import TXDOT_ROADS_FEATURE_SERVER_URL
+from scripts.ingest_usgs_crossings import USGS_CROSSINGS_FEATURE_SERVER_URL
 
 TEXAS_STATEFP = "48"
 KERR_COUNTYFP = "265"
@@ -54,25 +53,25 @@ def check_nhd_flowlines(boundary_geojson: dict) -> tuple:
     return len(features) > 0, f"{len(features)} feature(s)", None
 
 
-def check_osm_buildings(bbox: tuple) -> tuple:
-    data = OverpassApiTool().invoke({"query": build_buildings_query(bbox)})
-    elements = data.get("elements", [])
-    return len(elements) > 0, f"{len(elements)} element(s)", None
+def check_fema_buildings(boundary_geojson: dict) -> tuple:
+    data = ArcGISFeatureServerTool().invoke(
+        {"url": FEMA_BUILDINGS_FEATURE_SERVER_URL, "boundary_geojson": boundary_geojson}
+    )
+    features = data.get("features", [])
+    return len(features) > 0, f"{len(features)} feature(s)", None
 
 
-def check_osm_crossings(bbox: tuple) -> tuple:
-    data = OverpassApiTool().invoke({"query": build_crossings_query(bbox)})
-    if "elements" not in data:
-        return False, "response missing 'elements' key", None
-    # Kerr County may legitimately have zero tagged low-water crossings, so
-    # this check is "well-formed", not "non-empty".
-    return True, f"{len(data['elements'])} element(s) (zero is a valid result)", None
+def check_usgs_crossings(boundary_geojson: dict) -> tuple:
+    data = ArcGISFeatureServerTool().invoke(
+        {"url": USGS_CROSSINGS_FEATURE_SERVER_URL, "boundary_geojson": boundary_geojson}
+    )
+    features = data.get("features", [])
+    return len(features) > 0, f"{len(features)} feature(s)", None
 
 
 def main() -> int:
     results = []
     boundary_geojson = None
-    bbox = None
 
     print("Live smoke test -- calling real external endpoints (network required)\n")
 
@@ -81,7 +80,6 @@ def main() -> int:
         results.append(("Census TIGER boundary", ok, detail))
         if ok:
             boundary_geojson = boundary_gdf.geometry.iloc[0].__geo_interface__
-            bbox = overpass_bbox(boundary_gdf.geometry.union_all())
     except Exception as exc:  # noqa: BLE001 -- report, don't crash the run
         results.append(("Census TIGER boundary", False, f"error: {exc}"))
 
@@ -99,10 +97,10 @@ def main() -> int:
         results.append(("TxDOT ArcGIS FeatureServer (roads)", False, "skipped: no boundary"))
         results.append(("USGS NHDPlus HR MapServer (flowlines)", False, "skipped: no boundary"))
 
-    if bbox is not None:
+    if boundary_geojson is not None:
         for label, check in (
-            ("Overpass API (buildings)", lambda: check_osm_buildings(bbox)),
-            ("Overpass API (crossings)", lambda: check_osm_crossings(bbox)),
+            ("FEMA USA Structures FeatureServer (buildings)", lambda: check_fema_buildings(boundary_geojson)),
+            ("USGS stream crossings FeatureServer", lambda: check_usgs_crossings(boundary_geojson)),
         ):
             try:
                 ok, detail, _ = check()
@@ -110,8 +108,8 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 results.append((label, False, f"error: {exc}"))
     else:
-        results.append(("Overpass API (buildings)", False, "skipped: no boundary"))
-        results.append(("Overpass API (crossings)", False, "skipped: no boundary"))
+        results.append(("FEMA USA Structures FeatureServer (buildings)", False, "skipped: no boundary"))
+        results.append(("USGS stream crossings FeatureServer", False, "skipped: no boundary"))
 
     any_failed = False
     for label, ok, detail in results:

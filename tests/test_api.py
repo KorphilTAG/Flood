@@ -249,6 +249,67 @@ def test_reaches_and_gauges_routes(client: TestClient) -> None:
         validate_json("gauge-row", row)
 
 
+def test_vulnerability_and_exposure_routes(api_dirs: dict[str, Path], store: Any) -> None:
+    """GET /vulnerability.geojson and /exposure (Addendum 2) degrade gracefully with no
+    frozen model output and no extracted impact JSON on disk, rather than erroring."""
+    settings = Settings(
+        runs_dir=api_dirs["runs_dir"],
+        data_dir=api_dirs["data_dir"],
+        scenarios_dir=api_dirs["scenarios_dir"],
+        # Point at a path that does not exist, independent of whatever project/output/
+        # happens to hold in this checkout, to isolate the "no frozen output yet" case.
+        demographic_risk_geojson=api_dirs["scenarios_dir"].parent / "no-such-demographic-risk.geojson",
+    )
+    app = create_app(settings=settings, store=store)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
+        run_id = create_resp.json()["run_id"]
+
+        resp_v = client.get(f"/runs/{run_id}/vulnerability.geojson")
+        assert resp_v.status_code == 200
+        assert resp_v.json() == {"type": "FeatureCollection", "features": []}
+
+        resp_v_unknown = client.get("/runs/nonexistent-run/vulnerability.geojson")
+        assert resp_v_unknown.status_code == 404
+
+        resp_e_miss = client.get(f"/runs/{run_id}/exposure?p=2025-01-01T08:00:00Z")
+        assert resp_e_miss.status_code == 400
+        assert resp_e_miss.json()["error"]["code"] == "missing_parameter"
+
+        # No `flood impacts extract` has run for this tick, so this must be an empty layer,
+        # not a 404 or 500 -- a frontend polling ahead of extraction must never see a hard failure.
+        resp_e = client.get(f"/runs/{run_id}/exposure?p=2025-01-01T08:00:00Z&t=2025-01-01T10:00:00Z")
+        assert resp_e.status_code == 200
+        assert resp_e.json() == []
+
+
+def test_vulnerability_geojson_serves_the_real_frozen_output(
+    api_dirs: dict[str, Path], store: Any, repo_root: Path
+) -> None:
+    """When output/demographic_risk.geojson exists (the checked-in Addendum 1 artifact), the
+    route serves it as-is: real footprints, real weights, no transformation."""
+    frozen = repo_root / "project" / "output" / "demographic_risk.geojson"
+    if not frozen.is_file():
+        pytest.skip("project/output/demographic_risk.geojson not present in this checkout")
+    settings = Settings(
+        runs_dir=api_dirs["runs_dir"],
+        data_dir=api_dirs["data_dir"],
+        scenarios_dir=api_dirs["scenarios_dir"],
+        demographic_risk_geojson=frozen,
+    )
+    app = create_app(settings=settings, store=store)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        run_id = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"}).json()["run_id"]
+        resp = client.get(f"/runs/{run_id}/vulnerability.geojson")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["type"] == "FeatureCollection"
+        assert len(body["features"]) > 0
+        for feature in body["features"][:5]:
+            assert feature["geometry"]["type"] == "Point"
+            assert "feature_id" in feature["properties"]
+
+
 def test_raster_and_byte_ranges(client: TestClient) -> None:
     """GET /runs/{run_id}/raster serves file with byte range support."""
     create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
