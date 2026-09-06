@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { LocateFixed } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 type Props = {
@@ -22,7 +21,7 @@ const layerLabels = {
 };
 
 /** MapLibre terrain from feature/terrain-view inside the Command and Field shell. */
-export default function OperationalMap({ selected, onSelect, fieldCopy = false, onHover }: Props) {
+export default function OperationalMap({ selected, features, target, onSelect, fieldCopy = false, onHover }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [layers, setLayers] = useState({
     flood: true, sectors: true, teams: !fieldCopy, hazards: true,
@@ -32,6 +31,7 @@ export default function OperationalMap({ selected, onSelect, fieldCopy = false, 
     frame.current?.contentWindow?.postMessage({ type, ...payload }, window.location.origin);
 
   useEffect(() => { send('incident-layers', { layers, selected }); }, [layers, selected]);
+  useEffect(() => { send('incident-data', { features, selected, at: target }); }, [features, selected, target]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !event.data) return;
@@ -46,7 +46,6 @@ export default function OperationalMap({ selected, onSelect, fieldCopy = false, 
     <section className={`map-module ${fieldCopy ? 'field-map-copy' : ''}`} aria-label={fieldCopy ? 'Latest field area map' : 'Texas operational map'}>
       <div className="map-toolbar">
         <span className="river-source-key"><i aria-hidden="true" /> Guadalupe River · 3D terrain and flood overlay</span>
-        <button className="icon-button" aria-label="Reset terrain camera" title="Reset terrain camera" onClick={() => send('terrain-camera', { camera: 'corridor' })}><LocateFixed size={16} /></button>
       </div>
       <fieldset className="map-layer-controls" aria-label="Visible map layers">
         {(Object.keys(layers) as (keyof typeof layers)[]).map((key) => (
@@ -57,7 +56,7 @@ export default function OperationalMap({ selected, onSelect, fieldCopy = false, 
         ))}
       </fieldset>
       <div className="map-panel terrain-frame-wrap">
-        <iframe ref={frame} className="terrain-frame" src="/terrain/terrain.html" title="Interactive 3D flood terrain" onLoad={() => send('incident-layers', { layers, selected })} />
+        <iframe ref={frame} className="terrain-frame" src="/terrain/terrain.html" title="Interactive 3D flood terrain" onLoad={() => { send('incident-layers', { layers, selected }); send('incident-data', { features, selected, at: target }); }} />
       </div>
       <div className="map-caption"><span>Public 3DEP terrain · engine depth overlay · simulated operational annotations</span></div>
     </section>

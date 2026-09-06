@@ -4234,3 +4234,15 @@ textarea,
 .phone-frame [data-slot='select-trigger'] {
   color: #f4f9ff;
 }
+.phone-map-overlay > header strong,
+.phone-report-body h2,
+.phone-report-summary,
+.phone-report-overlay > footer {
+  color: #f4f9ff;
+}
+.phone-map-overlay > header span,
+.phone-report-body small,
+.phone-report-body .facts-list dt,
+.phone-report-body .facts-list dd {
+  color: #d6e5f2;
+}

@@ -139,6 +139,7 @@ const incidentLayerIds = {
 };
 const incidentAreas = new Map();
 let incidentSelection = null;
+let pendingIncidentFeatures = null;
 
 function setIncidentLayers(layers = {}, selected) {
   incidentSelection = selected || incidentSelection;
@@ -156,6 +157,24 @@ function focusIncidentArea(id) {
   if (!area || !map) return;
   userMoved = true;
   map.flyTo({ center: [area.lon, area.lat], zoom: 13.1, pitch: 68, bearing: -18, duration: 950 });
+}
+
+function updateIncidentFeatures(features) {
+  if (!Array.isArray(features)) return;
+  pendingIncidentFeatures = features;
+  if (!map?.getSource('incident-hazards') || !map?.getSource('incident-people')) return;
+  const asPoints = (category) => ({
+    type: 'FeatureCollection',
+    features: features
+      .filter((feature) => feature?.category === category && feature.active !== false && Number.isFinite(feature.lon) && Number.isFinite(feature.lat))
+      .map((feature) => ({
+        type: 'Feature',
+        properties: { id: feature.id, label: feature.label || category, state: feature.state || 'predicted' },
+        geometry: { type: 'Point', coordinates: [feature.lon, feature.lat] },
+      })),
+  });
+  map.getSource('incident-hazards').setData(asPoints('hazard'));
+  map.getSource('incident-people').setData(asPoints('people'));
 }
 
 function incidentCircle(lon, lat, dx = 0.006, dy = 0.004) {
@@ -189,6 +208,7 @@ async function addIncidentLayers() {
     map.on('mouseenter', 'incident-areas-fill', (e) => { map.getCanvas().style.cursor = 'pointer'; window.parent.postMessage({ type: 'incident-hover', id: e.features?.[0]?.properties?.id }, window.location.origin); });
     map.on('mouseleave', 'incident-areas-fill', () => { map.getCanvas().style.cursor = ''; window.parent.postMessage({ type: 'incident-hover', id: null }, window.location.origin); });
     setIncidentLayers({}, incidentSelection);
+    if (pendingIncidentFeatures) updateIncidentFeatures(pendingIncidentFeatures);
     if (incidentSelection) focusIncidentArea(incidentSelection);
   } catch (err) { console.warn(err); }
 }
@@ -197,6 +217,10 @@ window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin || !event.data) return;
   if (event.data.type === 'incident-layers') {
     setIncidentLayers(event.data.layers, event.data.selected);
+    if (event.data.selected) focusIncidentArea(event.data.selected);
+  }
+  if (event.data.type === 'incident-data') {
+    updateIncidentFeatures(event.data.features);
     if (event.data.selected) focusIncidentArea(event.data.selected);
   }
   if (event.data.type === 'terrain-camera' && event.data.camera === 'corridor') fitCorridor();
@@ -1048,7 +1072,6 @@ async function selectRun(runId) {
 
 function bindControls() {
   document.getElementById('btn-dismiss-error')?.addEventListener('click', hideError);
-  document.getElementById('reset-camera')?.addEventListener('click', fitCorridor);
 
   document.getElementById('run-select')?.addEventListener('change', (e) => selectRun(e.target.value));
 
