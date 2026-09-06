@@ -19,6 +19,8 @@ __pycache__/
 tests/fixtures/mini_huc/out/
 .claude/settings.local.json
 .pnpm-store/
+.env
+ingestion/.env
 
 # Manually acquired source PDFs, verified source manifests, and generated local AAR indices.
 # (covered by data/* above, called out here for clarity)

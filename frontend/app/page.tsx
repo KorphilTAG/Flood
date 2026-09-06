@@ -146,6 +146,23 @@ function StateTag({ value }: { value: string }) {
     </span>
   );
 }
+// The historical critic (RAG) service — ingestion/critic — run separately from
+// this app (`uvicorn critic.app:app --port 8001` from ingestion/); see its README.
+const CRITIC_API_URL =
+  process.env.NEXT_PUBLIC_CRITIC_API_URL ?? 'http://localhost:8001';
+
+type CritiqueChunkRef = { text: string; chunk_ids: string[] };
+type CritiqueCitation = {
+  chunk_id: string;
+  excerpt: string;
+  citation: { title: string; canonical_url: string | null };
+};
+type CritiqueResponse = {
+  objections: CritiqueChunkRef[];
+  alternatives: CritiqueChunkRef[];
+  citations: CritiqueCitation[];
+};
+
 function download(name: string, content: string) {
   const url = URL.createObjectURL(
     new Blob([content], { type: 'application/json' }),
@@ -192,8 +209,21 @@ export default function Home() {
     [hoveredArea, setHoveredArea] = useState<string | null>(null);
   const [plan, setPlan] = useState(''),
     [reviews, setReviews] = useState<
-      Record<string, { plan: string; at: number; findings: string[] }>
-    >({});
+      Record<
+        string,
+        {
+          plan: string;
+          at: number;
+          objections: { text: string; chunkIds: string[] }[];
+          alternatives: { text: string; chunkIds: string[] }[];
+          citations: Record<
+            string,
+            { excerpt: string; title: string; canonicalUrl: string | null }
+          >;
+        }
+      >
+    >({}),
+    [reviewPending, setReviewPending] = useState(false);
   const liveMap = useMemo(
     () => deriveLiveMap(mock.sectors, operations.reports, p, t, initialTime),
     [operations.reports, p, t],
@@ -372,20 +402,60 @@ export default function Home() {
         : 'Map updated with your observation. Command can review and verify it.',
     );
   }
-  function reviewPlan() {
-    if (plan.trim().length < 15) return;
-    setReviews({
-      ...reviews,
-      [selected.id]: {
-        plan: plan.trim(),
-        at: clock,
-        findings: [
-          `Access constraint: ${selected.access.toLowerCase()}. Verify the approach before committing resources.`,
-          `Information gap: ${selected.next}`,
-          `Required capability in this fixture: ${selected.capability}. Match the assigned team and retain an alternate approach.`,
-        ],
-      },
-    });
+  async function reviewPlan() {
+    const submittedPlan = plan.trim();
+    if (submittedPlan.length < 15 || reviewPending) return;
+    setReviewPending(true);
+    try {
+      const res = await fetch(`${CRITIC_API_URL}/v1/critique`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: submittedPlan,
+          decision_point: `${selected.code} · ${selected.name}`,
+          situation: selected.rationale,
+          hazard: 'flood',
+          phase: 'response',
+        }),
+      });
+      const body = (await res.json()) as
+        | CritiqueResponse
+        | { error?: { message?: string } };
+      if (!res.ok) {
+        const errBody = body as { error?: { message?: string } };
+        throw new Error(errBody?.error?.message ?? `Critic service error (${res.status})`);
+      }
+      const data = body as CritiqueResponse;
+      const citations: Record<
+        string,
+        { excerpt: string; title: string; canonicalUrl: string | null }
+      > = {};
+      for (const c of data.citations) {
+        citations[c.chunk_id] = {
+          excerpt: c.excerpt,
+          title: c.citation.title,
+          canonicalUrl: c.citation.canonical_url,
+        };
+      }
+      setReviews({
+        ...reviews,
+        [selected.id]: {
+          plan: submittedPlan,
+          at: clock,
+          objections: data.objections.map((o) => ({ text: o.text, chunkIds: o.chunk_ids })),
+          alternatives: data.alternatives.map((a) => ({ text: a.text, chunkIds: a.chunk_ids })),
+          citations,
+        },
+      });
+    } catch (err) {
+      setNotice(
+        err instanceof Error
+          ? `RAG review unavailable: ${err.message}`
+          : 'RAG review unavailable: could not reach the critic service.',
+      );
+    } finally {
+      setReviewPending(false);
+    }
   }
   function exportLog() {
     download(
@@ -1465,8 +1535,8 @@ export default function Home() {
                 <section>
                   <h3>Stress-test a proposed plan</h3>
                   <p className="muted">
-                    Illustrative, rule-based review against this area’s mock
-                    facts. No AI or historical corpus is connected.
+                    Reviewed against this area&rsquo;s historical AAR corpus by
+                    the RAG critic service — grounded citations, not a rule fixture.
                   </p>
                   <label className="form-label" htmlFor="plan">
                     Proposed tactics
@@ -1493,25 +1563,67 @@ export default function Home() {
                   />
                   <button
                     className="action-button"
-                    disabled={plan.trim().length < 15}
+                    disabled={plan.trim().length < 15 || reviewPending}
                     onClick={reviewPlan}
                   >
-                    Review against area facts <ArrowRight size={15} />
+                    {reviewPending ? 'Reviewing…' : 'Review against area facts'}{' '}
+                    <ArrowRight size={15} />
                   </button>
                 </section>
                 {review && (
                   <section className="review-result">
-                    <h3>Illustrative review · {time(review.at)}</h3>
+                    <h3>RAG review · {time(review.at)}</h3>
                     <p className="submitted-plan">{review.plan}</p>
-                    {review.findings.map((finding, i) => (
-                      <article key={i}>
-                        <p>{finding}</p>
-                        <button
-                          className="source-ref"
-                          onClick={() => setInspector('evidence')}
-                        >
-                          Source: {selected.id} <ChevronRight size={12} />
-                        </button>
+                    {review.objections.length === 0 &&
+                      review.alternatives.length === 0 && (
+                        <p className="muted">
+                          No objections raised against the historical record.
+                        </p>
+                      )}
+                    {review.objections.map((finding, i) => (
+                      <article key={`objection-${i}`}>
+                        <p className="finding-kind">Objection</p>
+                        <p>{finding.text}</p>
+                        {finding.chunkIds.map((id) => {
+                          const citation = review.citations[id];
+                          if (!citation) return null;
+                          return (
+                            <button
+                              key={id}
+                              className="source-ref"
+                              title={citation.excerpt}
+                              onClick={() =>
+                                citation.canonicalUrl &&
+                                window.open(citation.canonicalUrl, '_blank', 'noopener')
+                              }
+                            >
+                              Source: {citation.title} <ChevronRight size={12} />
+                            </button>
+                          );
+                        })}
+                      </article>
+                    ))}
+                    {review.alternatives.map((finding, i) => (
+                      <article key={`alternative-${i}`}>
+                        <p className="finding-kind">Alternative</p>
+                        <p>{finding.text}</p>
+                        {finding.chunkIds.map((id) => {
+                          const citation = review.citations[id];
+                          if (!citation) return null;
+                          return (
+                            <button
+                              key={id}
+                              className="source-ref"
+                              title={citation.excerpt}
+                              onClick={() =>
+                                citation.canonicalUrl &&
+                                window.open(citation.canonicalUrl, '_blank', 'noopener')
+                              }
+                            >
+                              Source: {citation.title} <ChevronRight size={12} />
+                            </button>
+                          );
+                        })}
                       </article>
                     ))}
                   </section>

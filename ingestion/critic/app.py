@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from aar.models import IndexError as AarIndexError
@@ -38,6 +39,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Flood Historical Critic API", version="0.1.0")
     app.state.settings = settings
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,
+        allow_methods=["POST", "OPTIONS"],
+        allow_headers=["*"],
+        max_age=600,
+    )
 
     @app.exception_handler(NoHistoricalContextError)
     async def _no_historical_context_handler(request: Request, exc: NoHistoricalContextError) -> JSONResponse:

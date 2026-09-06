@@ -42,6 +42,14 @@ class Settings:
             os.environ.get("CRITIC_MAX_REGENERATION_ATTEMPTS", DEFAULT_MAX_REGENERATION_ATTEMPTS)
         )
     )
+    # Browser origins allowed to call this API (the command-view frontend runs on
+    # another port). Comma-separated in CRITIC_CORS_ORIGINS; "*" allows any origin
+    # without credentials. Mirrors src/flood/api/settings.py's cors_origins field.
+    cors_origins: list[str] = field(
+        default_factory=lambda: [
+            o.strip() for o in os.environ.get("CRITIC_CORS_ORIGINS", "*").split(",") if o.strip()
+        ]
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.aar_index_dir, str):
