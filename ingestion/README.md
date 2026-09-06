@@ -311,6 +311,102 @@ needed). `test_critic_service.py`/`test_critic_api.py` fake/monkeypatch
 `OPENAI_API_KEY`, no network access, and no real built FAISS corpus is
 required.
 
+## Citation quality evaluation (RAGAS) (`ingestion/critic_eval/`)
+
+`critic_eval` is an offline RAGAS evaluation harness, run from `ingestion/`
+the same convention as `aar` and `critic`, that runs a fixed, checked-in
+sample of representative trainee plans through the real `critic.service.run_critique`
+(real retrieval, real OpenAI generation) and scores the resulting citations
+for two properties `critic/validator.py` does not check:
+
+- **Faithfulness** -- does the generated objection/alternative text actually
+  follow from the AAR excerpt it cites?
+- **Context precision** -- were the chunks retrieval handed the LLM actually
+  the relevant ones for this plan, not just whatever came back?
+
+**What this explicitly does not check:** citation *existence* -- whether a
+cited `chunk_id` was actually a member of the retrieved set. That is
+`critic-output-validator`'s job (`critic/validator.py::find_citation_violations`),
+already built, wired into `run_critique`'s regenerate-then-fail-closed loop,
+and unchanged by this feature. A response can cite a perfectly real,
+perfectly retrieved chunk and still misrepresent what it says (faithfulness),
+or the retrieval step can hand the LLM the wrong chunks entirely (context
+precision) -- two distinct failure modes existence-checking cannot catch,
+which is exactly why both checks exist.
+
+**A genuine departure from every other test/run path in `ingestion/`:**
+running this for real (`python -m critic_eval run`) requires a real, already-
+built AAR corpus (`python -m aar build`, see above) and a real
+`OPENAI_API_KEY` with network access -- both for the critic's own generation
+step and for the RAGAS judge LLM call that scores it. Unlike `test_geo.py`,
+`test_upsert.py`, `test_aar_*.py`, and `test_critic_*.py`, there is no faked
+path to a meaningful score here: faithfulness and context precision are
+themselves LLM-judged, so faking the judge would just report whatever the
+fake was built to report. This is stated plainly, not glossed over.
+
+### The fixed sample set
+
+There is no impact-JSON producer, session-state store, or training-mode UI
+in this repository, so there is no live traffic to sample critique outputs
+from. `critic_eval/fixtures/sample_plans.json` is therefore a small (8-entry),
+checked-in, human-authored set of illustrative trainee plans, grounded in
+the real, documented Kerr County / Guadalupe River flash-flood timeline
+(`docs/architecture.md` Section 7): the 1:14 a.m. flash flood warning, the
+2:30 a.m. rising-gauge/camp-egress decision, and the 4:03 a.m. flash flood
+emergency. Each decision point has at least one plan variant written to
+align with documented best practice and at least one written to plausibly
+conflict with it, so both an "objections expected" and an "objections may be
+empty" path get exercised. None of this text is a transcript of any real
+trainee session -- no such session exists yet.
+
+### Run
+
+```bash
+cd ingestion
+export AAR_INDEX_DIR=../data/aar/library   # a real, already-built corpus
+export OPENAI_API_KEY=sk-...
+python -m critic_eval run
+# Optional, opt-in CI-style exit code (default is report-only, exit 0):
+python -m critic_eval run --fail-under-faithfulness 0.7 --fail-under-context-precision 0.7
+```
+
+Prints a human-readable table (decision point, plan excerpt, faithfulness
+score, context-precision score, a `below threshold` flag per the warn
+thresholds below) plus a section listing any sample that errored during the
+critic call, by exception message. Also writes a timestamped JSON report to
+`settings.report_dir` for archiving that specific run. Exits `0` unless a
+`--fail-under-*` flag was explicitly passed and a score fell below it -- the
+default is a human reads this before a demo, not a CI gate.
+
+### Environment variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `RAGAS_JUDGE_MODEL` | no | `gpt-4o-mini` | OpenAI chat model used as the RAGAS judge LLM (separate from `CRITIC_OPENAI_MODEL` so it can be tuned independently) |
+| `CRITIC_EVAL_SAMPLE_PATH` | no | `critic_eval/fixtures/sample_plans.json` | Path to the fixed sample-plan fixture |
+| `CRITIC_EVAL_REPORT_DIR` | no | `critic_eval/reports/` | Directory a timestamped JSON report is written to |
+| `CRITIC_EVAL_FAITHFULNESS_WARN_THRESHOLD` | no | `0.7` | Informational report-only flag (RAGAS scores are 0-1), not a hard gate |
+| `CRITIC_EVAL_CONTEXT_PRECISION_WARN_THRESHOLD` | no | `0.7` | Informational report-only flag, not a hard gate |
+
+Also reads `AAR_INDEX_DIR` and `OPENAI_API_KEY` (see the critic service's own
+table above) -- this harness calls the critic in-process, so it needs the
+same corpus and credential the critic itself does.
+
+### Tests
+
+```bash
+cd ingestion
+pytest tests/test_critic_eval_dataset.py tests/test_critic_eval_runner.py tests/test_critic_eval_mapping.py tests/test_critic_eval_report.py
+```
+
+Runs fully offline: no real `OPENAI_API_KEY`, no network access, and no real
+built FAISS corpus. `critic.service.run_critique` and RAGAS's `evaluate` are
+always injected/faked in these four files. `ragas` itself must be installed
+(it is imported by these tests to build the metric objects/dataset schema),
+but no network call or API key is exercised by importing or constructing it.
+Only `python -m critic_eval run` itself (not exercised by any test) makes a
+real critic call and a real RAGAS judge call.
+
 ## Manual follow-up (not performed by this feature)
 
 These items are genuinely manual per PRD 6.1. No script in this directory

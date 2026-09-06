@@ -1,0 +1,81 @@
+{
+  "_comment": [
+    "Fixed, checked-in sample set for the citation-quality-eval (RAGAS) harness.",
+    "Every 'plan'/'situation' string below is illustrative training-scenario",
+    "text authored by the implementer of pipeline/features/citation-quality-eval,",
+    "grounded in the real, documented Kerr County / Guadalupe River flash-flood",
+    "timeline (docs/architecture.md Section 7: flash flood warning 1:14 a.m.,",
+    "rising gauge at Hunt / camp egress 2:30 a.m., flash flood emergency",
+    "4:03 a.m.). None of this text is a transcript of any real trainee",
+    "session -- no training-mode UI or session-state store exists in this",
+    "repository, so no such transcript exists to draw from (spec.md Problem,",
+    "constraint 1). Each 'entries' object is shaped as a",
+    "critic.schemas.CritiqueRequest payload."
+  ],
+  "entries": [
+    {
+      "decision_point": "1:14 a.m. flash flood warning",
+      "situation": "A flash flood warning has just been issued for the Guadalupe River in Kerr County. The county hazard mitigation plan rates a flood event of this kind as likely within a year, and the emergency operations plan prescribes reconnaissance of known trouble spots -- including riverside camps and low-water crossings -- immediately after a watch is upgraded to a warning.",
+      "plan": "Dispatch two-person teams to physically check the riverside camps and the known low-water crossings named in the emergency operations plan, and stage the reconnaissance findings for the incident commander before deciding on any alert.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "1:14 a.m. flash flood warning",
+      "situation": "A flash flood warning has just been issued for the Guadalupe River in Kerr County. The county hazard mitigation plan rates a flood event of this kind as likely within a year, and the emergency operations plan prescribes reconnaissance of known trouble spots -- including riverside camps and low-water crossings -- immediately after a watch is upgraded to a warning.",
+      "plan": "Wait for the next scheduled gauge reading before sending anyone out; reconnaissance can happen once there is clearer evidence the river is actually rising, since the warning alone might not amount to anything.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "1:14 a.m. flash flood warning",
+      "situation": "Flash flood warning just issued. Camp population along the Guadalupe has not yet been notified.",
+      "plan": "Notify camp staff by phone now and have them begin quietly waking campers while the reconnaissance teams are still en route to the low-water crossings, so evacuation prep is not gated on reconnaissance finishing first.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "2:30 a.m. rising gauge / camp egress",
+      "situation": "The gauge at Hunt is rising fast. The impact extractor flags that the camp egress roads will go under water within 30 minutes. Campers along the river are opted into CodeRed but IPAWS has not been activated.",
+      "plan": "Activate CodeRed only, since most camp families already opted in and a broader wireless alert risks unnecessary panic outside the immediately affected area.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "2:30 a.m. rising gauge / camp egress",
+      "situation": "The gauge at Hunt is rising fast. The impact extractor flags that the camp egress roads will go under water within 30 minutes. Campers along the river are opted into CodeRed but IPAWS has not been activated.",
+      "plan": "Activate IPAWS immediately in addition to CodeRed, since CodeRed's opt-in reach does not cover every camper and IPAWS reaches every cell phone in range regardless of opt-in status, and egress roads are minutes from going under.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "2:30 a.m. rising gauge / camp egress",
+      "situation": "The gauge at Hunt is rising fast and camp egress roads are flagged as going under within 30 minutes.",
+      "plan": "Begin moving campers on foot toward higher ground away from the egress roads immediately, without waiting for a formal alert method decision, given the 30-minute window already flagged by the impact extractor.",
+      "hazard": "flood",
+      "phase": "response",
+      "top_k": 5
+    },
+    {
+      "decision_point": "4:03 a.m. flash flood emergency",
+      "situation": "A flash flood emergency has been declared. The search-area tool has produced downstream polygons from scripted last-known positions of missing campers.",
+      "plan": "Direct search teams to the downstream polygons produced by the search-area tool, prioritizing the polygons closest to the last-known positions first, and stage water-rescue equipment at the nearest accessible high ground to each polygon.",
+      "hazard": "flood",
+      "phase": "recovery",
+      "top_k": 5
+    },
+    {
+      "decision_point": "4:03 a.m. flash flood emergency",
+      "situation": "A flash flood emergency has been declared. The search-area tool has produced downstream polygons from scripted last-known positions of missing campers.",
+      "plan": "Send every available search team to the single largest downstream polygon first, since it covers the most area, and hold the smaller polygons until additional resources arrive later in the morning.",
+      "hazard": "flood",
+      "phase": "recovery",
+      "top_k": 5
+    }
+  ]
+}
