@@ -527,18 +527,21 @@ def build_network_geojson(network: pd.DataFrame, crs: str) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
+# RunStore.get opens a fresh Run per request, so the per-run network GeoJSON is cached here,
+# keyed by store identity and run id. A run's network never changes after creation.
+_NETWORK_GEOJSON_CACHE: dict[tuple[int, str], dict[str, Any]] = {}
+
+
 @router.get("/{run_id}/network.geojson")
 def get_network_geojson(run_id: str, store: Any = Depends(get_store)) -> JSONResponse:
-    """Reach flowlines and gauge points in WGS84 for the terrain view. Static per run, cached on the run."""
+    """Reach flowlines and gauge points in WGS84 for the terrain view. Static per run."""
     run = _get_run(store, run_id)
-    cached = getattr(run, "_network_geojson", None)
+    key = (id(store), run_id)
+    cached = _NETWORK_GEOJSON_CACHE.get(key)
     if cached is None:
         network, crs = _network_frame(run, store)
         cached = build_network_geojson(network, crs)
-        try:
-            setattr(run, "_network_geojson", cached)
-        except AttributeError:
-            pass
+        _NETWORK_GEOJSON_CACHE[key] = cached
     return JSONResponse(status_code=200, content=cached, media_type="application/geo+json")
 
 

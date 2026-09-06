@@ -33,4 +33,4 @@ How it is built:
 
 ## Open questions
 
-- Whether to add a very small 3D preview using deck.gl's TerrainLayer over a downsampled DEM once 2D looks right. Low priority; only if it is a couple of hours.
+- Resolved 2026-09-05 by [0009](0009-terrain-view-on-public-terrain-tiles.md): a 3D view exists at `/verifier/terrain.html`, built with MapLibre GL JS over public terrain tiles rather than deck.gl over a local DEM.
