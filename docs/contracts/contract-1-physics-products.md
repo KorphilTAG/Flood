@@ -144,10 +144,13 @@ Served by the FastAPI process. Paths are relative to the API root. All responses
 | `GET /runs/{run_id}/gauges?p=` | Gauge table as JSON array | |
 | `GET /runs/{run_id}/raster?p=&t=` | The `depth.tif` | `application/octet-stream`, range requests supported |
 | `GET /runs/{run_id}/tte?p=` | The `time_to_exceedance.tif` | |
-| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048` | Colour-ramped PNG in EPSG:3857 for the verifier | Response header `X-Bounds-3857: xmin,ymin,xmax,ymax`. Transparent where dry or nodata. |
+| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048` | Colour-ramped PNG in EPSG:3857 for map clients | Response headers `X-Bounds-3857: xmin,ymin,xmax,ymax` and `X-Bounds-4326: west,south,east,north` (degrees, for `Rectangle.fromDegrees` style placement). Transparent where dry or nodata. `p=hindsight` allowed. |
 | `GET /runs/{run_id}/hindsight?t=` | State response for the truth run | Equivalent to `state?p=hindsight&t=` |
+| `GET /runs/{run_id}/network.geojson` | Reach flowlines and gauge points as WGS84 GeoJSON | Static per run. Reach features: id = NWM `feature_id`, `kind: "reach"`, network columns as properties. Gauged reaches add a `kind: "gauge"` Point (id `gauge:<site>`) at the flowline midpoint. Used by the terrain view to join the reach and gauge tables to geometry. |
 
 Error codes: `t_before_p`, `horizon_exceeded`, `outside_record`, `unknown_run`, `unknown_scenario`, `invalid_forcing`.
+
+Cross-origin access: the API sends CORS headers for the origins in `FLOOD_CORS_ORIGINS` (comma-separated, default `*`, no credentials) and exposes `X-Bounds-3857`, `X-Bounds-4326`, `Content-Range` and `Accept-Ranges`, so a map front end served from another port can read the JSON routes, use `overlay.png` as a WebGL texture and range-read the COGs directly.
 
 ## 10. Rules every implementer follows
 

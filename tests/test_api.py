@@ -336,6 +336,33 @@ def test_overlay_route(client: TestClient) -> None:
     assert len(parts) == 4
     for pt in parts:
         float(pt)
+    # Geographic extent for map clients that place images by lon/lat rectangle.
+    west, south, east, north = (float(v) for v in resp_png.headers["x-bounds-4326"].split(","))
+    assert -180.0 <= west < east <= 180.0
+    assert -90.0 <= south < north <= 90.0
+
+
+def test_cors_for_map_clients(client: TestClient) -> None:
+    """A front end on another origin can read JSON, load overlays as WebGL textures and see the bounds headers."""
+    origin = "http://localhost:3000"
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"}, headers={"Origin": origin})
+    assert create_resp.status_code == 202
+    assert create_resp.headers["access-control-allow-origin"] == "*"
+    run_id = create_resp.json()["run_id"]
+
+    preflight = client.options(
+        f"/runs/{run_id}/overlay.png",
+        headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+    )
+    assert preflight.status_code == 200
+    assert "GET" in preflight.headers["access-control-allow-methods"]
+
+    p = t = "2025-01-01T08:00:00Z"
+    resp = client.get(f"/runs/{run_id}/overlay.png?p={p}&t={t}&band=depth_mid", headers={"Origin": origin})
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "*"
+    exposed = resp.headers["access-control-expose-headers"]
+    assert "X-Bounds-3857" in exposed and "X-Bounds-4326" in exposed
 
 
 def test_skill_route(client: TestClient, store: Any) -> None:

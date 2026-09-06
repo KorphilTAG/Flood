@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -94,6 +95,18 @@ def create_app(settings: Settings | None = None, store: Any = None) -> FastAPI:
     app.state.settings = settings
     app.state.store = store
     app.state.clock_service = clock_service
+
+    # Map front ends on another origin fetch JSON, PNG overlays (WebGL textures need CORS
+    # headers or the browser refuses to upload the image) and byte ranges of the COGs.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["X-Bounds-3857", "X-Bounds-4326", "Content-Range", "Accept-Ranges", "Content-Length"],
+        max_age=600,
+    )
 
     # Request timing logger middleware
     @app.middleware("http")

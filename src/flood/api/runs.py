@@ -1,4 +1,4 @@
-"""Runs API router covering state, reaches, gauges, raster, tte, overlay, hindsight, skill, and static products."""
+"""Runs API router covering state, reaches, gauges, raster, tte, overlay, hindsight, network, skill, and static products."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,9 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
+import rasterio.warp
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -372,7 +374,11 @@ def get_overlay(
     max_px: int = 2048,
     store: Any = Depends(get_store),
 ) -> Response:
-    """Return color-ramped PNG reprojected to EPSG:3857 with X-Bounds-3857 header."""
+    """Return a colour-ramped PNG in EPSG:3857 with its extent in the X-Bounds-3857 header.
+
+    X-Bounds-4326 carries the same extent as west,south,east,north degrees for map
+    clients that place images by geographic rectangle (Cesium, Leaflet, MapLibre).
+    """
     if not p or not t:
         raise APIError(
             status_code=400,
@@ -408,10 +414,15 @@ def get_overlay(
 
     png_bytes, bounds = render_overlay_png(array, grid, max_px=clamped_max_px)
     xmin, ymin, xmax, ymax = bounds
+    west, south, east, north = rasterio.warp.transform_bounds("EPSG:3857", "EPSG:4326", xmin, ymin, xmax, ymax)
     return Response(
         content=png_bytes,
         media_type="image/png",
-        headers={"X-Bounds-3857": f"{xmin},{ymin},{xmax},{ymax}"},
+        headers={
+            "X-Bounds-3857": f"{xmin},{ymin},{xmax},{ymax}",
+            "X-Bounds-4326": f"{west:.7f},{south:.7f},{east:.7f},{north:.7f}",
+            "Cache-Control": "public, max-age=3600",
+        },
     )
 
 
@@ -431,6 +442,104 @@ def get_hindsight(
     run = _get_run(store, run_id)
     _, state_dict = run.state("hindsight", t, write=False)
     return JSONResponse(status_code=200, content=state_dict)
+
+
+def _network_frame(run: Any, store: Any) -> tuple[pd.DataFrame, str]:
+    """Reach network table and its CRS for a run: the loaded cube's, else the cube directory on disk."""
+    cube = getattr(run, "cube", None)
+    if cube is not None and getattr(cube, "network", None) is not None:
+        return cube.network, str(cube.grid.crs)
+    manifest = getattr(run, "manifest", None) or {}
+    scenario_id = (manifest.get("scenario") or {}).get("scenario_id")
+    grid = getattr(run, "grid", None)
+    crs = str((manifest.get("grid") or {}).get("crs") or getattr(grid, "crs", None) or "EPSG:5070")
+    path = Path(getattr(store, "data_dir", "data")) / "cube" / str(scenario_id) / "network.parquet"
+    if not path.is_file():
+        raise APIError(
+            status_code=404,
+            code="not_found",
+            message=f"Network table not found for run '{getattr(run, 'run_id', '?')}'",
+        )
+    return pd.read_parquet(path), crs
+
+
+def build_network_geojson(network: pd.DataFrame, crs: str) -> dict[str, Any]:
+    """Reach flowlines and gauge points as a WGS84 GeoJSON FeatureCollection.
+
+    Reach features have kind="reach", the NWM feature_id as the feature id, and the network
+    columns as properties. Gauged reaches also emit a kind="gauge" Point at the flowline
+    midpoint with id "gauge:<site>", so the client can join the reach and gauge tables by id.
+    """
+    import shapely
+    import shapely.wkb
+    from pyproj import Transformer
+    from shapely.geometry import mapping
+
+    transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+
+    def to_wgs84(coords: np.ndarray) -> np.ndarray:
+        x, y = transformer.transform(coords[:, 0], coords[:, 1])
+        return np.column_stack([x, y])
+
+    features: list[dict[str, Any]] = []
+    for row in network.itertuples(index=False):
+        wkb = getattr(row, "flowline_wkb", None)
+        if wkb is None or (isinstance(wkb, float) and np.isnan(wkb)):
+            continue
+        geom = shapely.wkb.loads(bytes(wkb))
+        if geom.is_empty:
+            continue
+        geom_ll = shapely.transform(geom, to_wgs84)
+        fid = int(row.feature_id)
+        gauge_site = row.gauge_site if isinstance(row.gauge_site, str) and row.gauge_site else None
+        in_aoi = bool(row.in_aoi)
+        features.append({
+            "type": "Feature",
+            "id": fid,
+            "geometry": mapping(geom_ll),
+            "properties": {
+                "kind": "reach",
+                "reach_ref": f"reach:{fid}",
+                "feature_id": fid,
+                "to_feature_id": int(row.to_feature_id) if pd.notna(row.to_feature_id) else None,
+                "stream_order": int(row.stream_order),
+                "levelpath_id": int(row.levelpath_id),
+                "length_m": float(row.length_m),
+                "slope": float(row.slope) if pd.notna(row.slope) else None,
+                "gauge_site": gauge_site,
+                "in_aoi": in_aoi,
+            },
+        })
+        if gauge_site:
+            pt = shapely.line_interpolate_point(geom_ll, 0.5, normalized=True)
+            features.append({
+                "type": "Feature",
+                "id": f"gauge:{gauge_site}",
+                "geometry": {"type": "Point", "coordinates": [float(pt.x), float(pt.y)]},
+                "properties": {
+                    "kind": "gauge",
+                    "gauge_ref": f"gauge:{gauge_site}",
+                    "site": gauge_site,
+                    "feature_id": fid,
+                    "in_aoi": in_aoi,
+                },
+            })
+    return {"type": "FeatureCollection", "features": features}
+
+
+@router.get("/{run_id}/network.geojson")
+def get_network_geojson(run_id: str, store: Any = Depends(get_store)) -> JSONResponse:
+    """Reach flowlines and gauge points in WGS84 for the terrain view. Static per run, cached on the run."""
+    run = _get_run(store, run_id)
+    cached = getattr(run, "_network_geojson", None)
+    if cached is None:
+        network, crs = _network_frame(run, store)
+        cached = build_network_geojson(network, crs)
+        try:
+            setattr(run, "_network_geojson", cached)
+        except AttributeError:
+            pass
+    return JSONResponse(status_code=200, content=cached, media_type="application/geo+json")
 
 
 @router.get("/{run_id}/skill")
