@@ -209,6 +209,46 @@ made.
 | `CRITIC_OPENAI_MODEL` | no | `gpt-4o-mini` | OpenAI chat model used for generation (adjust for latency/cost before a live demo) |
 | `CRITIC_REQUEST_TIMEOUT` | no | `30` | Seconds before the OpenAI/LangChain call times out |
 | `CRITIC_DEFAULT_TOP_K` | no | `5` | Default number of AAR chunks retrieved per request when a request omits `top_k` |
+| `CRITIC_MAX_REGENERATION_ATTEMPTS` | no | `2` | Additional regeneration attempts allowed after the output validator (below) rejects a citation, beyond the first generation attempt (default means up to 3 total generation attempts per request) |
+
+### Output validator (`critic/validator.py`)
+
+Every generated critique is independently re-checked before it is returned,
+closing the gap between "the schema is supposed to prevent this" and "this
+was actually re-verified":
+
+- **What it checks:** for every objection/alternative, (1) every entry in
+  the structured `chunk_ids` field, and (2) every bracket-delimited token
+  (`[chunk_id]`) found inline in the free-text `text` field, must be a
+  member of the set of `chunk_id`s actually retrieved for that request. The
+  structured-field check is a deliberate second, independently-testable
+  backstop of the same fact the per-request `Enum` in
+  `schemas.py::build_structured_response_schema` is already supposed to
+  guarantee -- it does not replace that Enum constraint. The inline check
+  covers a citation surface the Enum cannot constrain at all: a
+  bracket-delimited chunk-ID-looking token written inside a free-text
+  string.
+- **What it explicitly does not check:** feature IDs or any "current flood
+  facts" claim -- no impact-JSON producer exists anywhere in this repository
+  yet, so there is nothing to validate feature-ID citations against today
+  (the validator's `known_chunk_ids` parameter is written to accept an
+  additional set of valid IDs once such a producer exists, without changing
+  its interface). It also does not check *faithfulness* -- whether a real,
+  correctly-cited chunk's content actually supports the claim next to it.
+  That is a distinct failure mode assigned to a separate, later RAGAS-based
+  evaluation, not to this rule-checker.
+- **Regenerate-then-fail-closed:** a citation violation does not surface a
+  fabricated ID to the caller and does not silently pass it through. Instead
+  `service.py::run_critique` re-calls the LLM with an added corrective
+  instruction (naming the invalid reference(s) and reiterating the exact
+  valid `chunk_id` set), then re-runs the validator on the new response, up
+  to `CRITIC_MAX_REGENERATION_ATTEMPTS` additional times. If every attempt
+  (first call plus all regenerations) still fails validation, the request
+  raises `CritiqueGenerationError` (mapped to the existing `502` below) --
+  it still fails closed, but only after regeneration was actually attempted.
+- The validator itself (`find_citation_violations`) is a pure,
+  dependency-free, standard-library-only function: no LLM call, no network
+  call, no embedding/similarity computation.
 
 ### `POST /v1/critique`
 
@@ -262,12 +302,14 @@ Error responses are `{"error": {"code": str, "message": str}}`:
 
 ```bash
 cd ingestion
-pytest tests/test_critic_service.py tests/test_critic_api.py
+pytest tests/test_critic_service.py tests/test_critic_api.py tests/test_critic_validator.py
 ```
 
-Both files fake/monkeypatch `aar.search.search_index` and the LLM generator
-call -- no real `OPENAI_API_KEY`, no network access, and no real built FAISS
-corpus is required.
+`test_critic_validator.py` is pure unit tests of the rule-checker (no fakes
+needed). `test_critic_service.py`/`test_critic_api.py` fake/monkeypatch
+`aar.search.search_index` and the LLM generator call -- no real
+`OPENAI_API_KEY`, no network access, and no real built FAISS corpus is
+required.
 
 ## Manual follow-up (not performed by this feature)
 
