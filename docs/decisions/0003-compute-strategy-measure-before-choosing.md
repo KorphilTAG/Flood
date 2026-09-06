@@ -64,3 +64,16 @@ Reference corridor: 6600 by 2600 cells (17.2 Mcells), 9 HAND branches, 244 route
 Decision taken: the **compute-then-cache** branch. The routed series is cached per `p` in memory, so scrubbing `t` under a fixed `p` costs only the mapping; written products are reused from disk. The demo's scripted `(p, t)` pairs and the hindsight series are prewarmed before the demo.
 
 Next optimisation targets, in order: vectorise routing across reaches at the same topological level (the Python loop over 244 reaches by 720 to 2880 steps by 3 members is the 19 to 86 s); use a 5-minute routing step for the demo scenario if that is not enough; store cube branches as int16 millimetres inside their covered window to cut the 1.2 GB in-memory footprint.
+
+## Measurements, 2026-09-05 evening (full forcing: USGS plus NWM analysis and short range)
+
+The 5-minute routing step was adopted for the reference scenario (`routing.dt_minutes: 5` in the scenario file) and checked against 1 minute on the same cutoff (`p` 09:00Z, `t` 10:00Z, 150 reaches with flow at every reach):
+
+| Quantity | 1-minute step | 5-minute step |
+|---|---|---|
+| Routing, one cutoff, 12 h window | 14.7 s | 5.6 s |
+| Full `(p, t)` state, cold, before raster write | 17.4 s | 8.5 s |
+| Discharge at the seven gauged reaches | reference | within 2.3 percent (largest at Kerrville above Bear Creek, 3.005 vs 3.075 cms); Hunt 2013.8 vs 2016.7 cms |
+| Stage at the seven gauged reaches | reference | within 0.01 m |
+
+Other figures at the 5-minute step: hindsight routing over the 48 h record 42 s; COG write of the six-band depth raster 9 s (was 25 s with the GTiff driver plus a separate COG translate); a prewarmed `(p, t)` state served from disk about 2.5 s; cube load 18 s. Prewarming the demo window (17 cutoffs at 15 min from 06:00Z to 10:00Z, horizons 0, 60, 120 min, time to exceedance for each cutoff, hindsight at 30 min from 06:00Z to 12:00Z) took about 35 minutes in one process.

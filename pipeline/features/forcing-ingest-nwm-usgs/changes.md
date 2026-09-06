@@ -119,3 +119,9 @@ options:
 ## Not done
 
 None. All acceptance criteria met.
+
+## Fix-up, 2026-09-05 (after the cycle)
+
+- The cycle prompt told the implementer to run `prep forcing --skip-nwm` "to save time" and nothing backfilled it, so the reference run had NWM lateral inflow of zero on 81 of 150 reaches and the engine looked broken. The full NWM ingest (49 analysis hours, 49 short-range cycles) was run on 2026-09-05; `--skip-short-range` was added so the analysis alone can be refreshed.
+- `download_file` retries three times with backoff, writes to a `.part` file and renames on success, and raises after the third failure; the ingest loop logs and skips that file instead of aborting the whole run (a `WinError 10051` aborted the first short-range ingest at 43 of 49 cycles).
+- Findings from the ingested data are in decision 0000 (short-range forecast content, lateral inflow magnitudes, NWM peak bias).
