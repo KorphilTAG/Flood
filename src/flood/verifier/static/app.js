@@ -1014,7 +1014,8 @@ export async function onRunSelected(runId) {
   const runRes = await safeFetchJson(runUrl);
   if (runRes.ok && runRes.data) {
     const runData = runRes.data;
-    state.scenarioId = runData.scenario_id || null;
+    // Manifest nests the scenario block (contract 1 section 3); accept a flat id too.
+    state.scenarioId = (runData.scenario && runData.scenario.scenario_id) || runData.scenario_id || null;
     if (state.scenarioId) {
       await loadScenario(state.scenarioId);
     }

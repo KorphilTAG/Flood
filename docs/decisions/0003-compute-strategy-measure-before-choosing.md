@@ -46,3 +46,21 @@ These figures suggest the pure function is probably fine for depth, and that the
 ## Open questions
 
 - Whether to reduce the verifier's working resolution to 20 m to keep interactive latency low while the product UI reads 10 m COGs. Measure first.
+
+## Measurements, 2026-09-05 (after wave 2 merged)
+
+Reference corridor: 6600 by 2600 cells (17.2 Mcells), 9 HAND branches, 244 routed reaches, USGS-only forcing, this development laptop with no GPU.
+
+| Stage | Before fix-up | After fix-up |
+|---|---|---|
+| `map_member`, one member, depth only | 3.3 s | 1.7 s |
+| `map_member`, one member, with velocity | 11.1 s | 2.5 s |
+| Routing, one cutoff, 12 h window at 1 min | 19 to 26 s | unchanged |
+| Routing, hindsight, full 48 h record | 86 s | unchanged |
+| Reduce three members | 1.2 s | 1.2 s |
+| First `(p, t)` state request, cold | about 30 s | about 15 s expected; routing dominates |
+| Fixture `(p, t)` through `Run` | 18 s (per-call DataFrame filtering in `qlat`) | 0.9 s |
+
+Decision taken: the **compute-then-cache** branch. The routed series is cached per `p` in memory, so scrubbing `t` under a fixed `p` costs only the mapping; written products are reused from disk. The demo's scripted `(p, t)` pairs and the hindsight series are prewarmed before the demo.
+
+Next optimisation targets, in order: vectorise routing across reaches at the same topological level (the Python loop over 244 reaches by 720 to 2880 steps by 3 members is the 19 to 86 s); use a 5-minute routing step for the demo scenario if that is not enough; store cube branches as int16 millimetres inside their covered window to cut the 1.2 GB in-memory footprint.
