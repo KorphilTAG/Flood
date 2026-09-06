@@ -8,7 +8,7 @@ bounds are ever passed as SQL parameters.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Sequence
 
 import geopandas as gpd
 from psycopg import sql
@@ -56,7 +56,7 @@ class PostGISExposureStore:
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
-    def _build_query(self, layer: ExposureLayer) -> sql.Composed:
+    def _build_query(self, layer: ExposureLayer, extra_columns: Sequence[str] = ()) -> sql.Composed:
         """SELECT id, <allow-listed attributes>, geom FROM schema.table WHERE geom && bounds.
 
         Column and relation names are composed as quoted identifiers, never interpolated.
@@ -66,8 +66,11 @@ class PostGISExposureStore:
         geom_col = sql.Identifier(pg.geometry_column)
         relation = sql.Identifier(pg.schema_, pg.table)
 
-        selected = [sql.Identifier(layer.id_field)]
-        selected += [sql.Identifier(a) for a in layer.attributes]
+        # id + allow-listed attributes + any registry join column the extractor needs
+        # (an egress `join_field` on a routes layer is not an attribute, but without it
+        # the join cannot be evaluated at all). dict.fromkeys de-duplicates in order.
+        names = dict.fromkeys([layer.id_field, *layer.attributes, *extra_columns])
+        selected = [sql.Identifier(n) for n in names]
         selected.append(geom_col)
 
         return sql.SQL("SELECT {cols} FROM {rel} WHERE {geom} && ST_MakeEnvelope(%s, %s, %s, %s, %s)").format(
@@ -82,11 +85,16 @@ class PostGISExposureStore:
         bounds: tuple[float, float, float, float],
         bounds_crs: str,
         target_crs: str,
+        extra_columns: Sequence[str] = (),
     ) -> gpd.GeoDataFrame:
         """Return ID + allow-listed attributes + geometry, reprojected to ``target_crs``.
 
         ``bounds`` is the raster extent expressed in ``bounds_crs``; it is converted to the
         stored layer's own CRS before the query so the server-side index can be used.
+
+        ``extra_columns`` are non-attribute columns the caller needs for a registry join
+        (today, an egress ``join_field``). They are fetched but never reported as feature
+        attributes, so the Contract 2 allow-list still governs what reaches an LLM.
         """
         require_postgis(layer)
         pg = layer.postgis
@@ -95,7 +103,7 @@ class PostGISExposureStore:
 
         with psycopg.connect(self.dsn) as conn:
             srid = self._geometry_srid(conn, layer)
-            query = self._build_query(layer)
+            query = self._build_query(layer, extra_columns)
             params = (*self._bounds_in_srid(bounds, bounds_crs, srid), srid)
             gdf = gpd.read_postgis(
                 query.as_string(conn),
@@ -104,7 +112,7 @@ class PostGISExposureStore:
                 params=params,
             )
 
-        return self._validate(gdf, layer, srid, target_crs)
+        return self._validate(gdf, layer, srid, target_crs, extra_columns)
 
     @staticmethod
     def _geometry_srid(conn: Any, layer: ExposureLayer) -> int:
@@ -144,11 +152,15 @@ class PostGISExposureStore:
 
     @staticmethod
     def _validate(
-        gdf: gpd.GeoDataFrame, layer: ExposureLayer, srid: int, target_crs: str
+        gdf: gpd.GeoDataFrame,
+        layer: ExposureLayer,
+        srid: int,
+        target_crs: str,
+        extra_columns: Sequence[str] = (),
     ) -> gpd.GeoDataFrame:
         """Reject anything that would produce an unattributable or unusable fact."""
         lid = layer.layer_id
-        missing = [c for c in [layer.id_field, *layer.attributes] if c not in gdf.columns]
+        missing = [c for c in [layer.id_field, *layer.attributes, *extra_columns] if c not in gdf.columns]
         if missing:
             raise ExposureDataError(
                 f"Exposure layer '{lid}': configured column(s) {missing} not returned"

@@ -67,11 +67,13 @@ def find_citation_violations(
     Returns an empty list when every structured `chunk_ids` entry and every
     bracketed inline `[token]` in `text` is a member of `known_chunk_ids`.
 
-    `known_chunk_ids` is written as a plain `set[str]` -- today populated
-    with only the request's retrieved AAR `chunk_id`s -- so a future caller
-    can pass an additional set of valid feature IDs (once an impact-JSON
-    producer exists) without changing this function's interface (spec.md In
-    scope item 4). Nothing here reads, fetches, or fabricates a feature ID.
+    `known_chunk_ids` is a plain `set[str]` of every ID this request may cite.
+    `service.py` now populates it with the union of the retrieved AAR `chunk_id`s
+    and the feature IDs carried by the request's Contract 2 impact document, so a
+    fabricated crossing or reach reference fails here exactly as a fabricated AAR
+    chunk does (spec.md In scope item 4; PRD 6.6 output validator). Both kinds share
+    one grammar, so no format branch is needed. Nothing here reads, fetches, or
+    fabricates an ID.
     """
     violations = _check_items("objection", objections, known_chunk_ids)
     violations.extend(_check_items("alternative", alternatives, known_chunk_ids))

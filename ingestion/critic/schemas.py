@@ -24,6 +24,11 @@ class CritiqueRequest(BaseModel):
     hazard: str | None = None
     phase: str | None = None
     top_k: int | None = None
+    #: A Contract 2 impact document (the extractor's `impact.json`), inline. This is
+    #: the only channel by which current flood facts reach the critic, and Contract 2
+    #: guarantees it carries no raster and no coordinates (PRD 6.5/6.6). When present,
+    #: its feature IDs join the retrieved chunk IDs as citable references.
+    impact: dict | None = None
 
     @field_validator("plan")
     @classmethod
@@ -81,22 +86,33 @@ class CritiqueResponse(BaseModel):
     objections: list[CritiqueObjection]
     alternatives: list[CritiqueAlternative]
     citations: list[RetrievedChunk]
+    #: Feature references drawn from the request's impact document that the response
+    #: actually cited. Empty when no impact document was supplied.
+    feature_citations: list[str] = []
     decision_point: str | None = None
     model: str
 
 
-def build_structured_response_schema(chunk_ids: Sequence[str]) -> type[BaseModel]:
+def build_structured_response_schema(citable_ids: Sequence[str]) -> type[BaseModel]:
     """Build a structured-output schema whose `chunk_ids` fields are an
-    `Enum` of exactly the given retrieved chunk IDs. Built fresh per request
+    `Enum` of exactly the given citable IDs. Built fresh per request
     because the valid ID set changes with every retrieval; a schema built
-    this way cannot represent an invented chunk ID at all -- it is a JSON
+    this way cannot represent an invented ID at all -- it is a JSON
     Schema constraint, not a post-hoc filter (see spec.md Approach, "Why a
     schema-constrained enum, not a post-hoc filter").
-    """
-    if not chunk_ids:
-        raise ValueError("build_structured_response_schema requires at least one chunk id")
 
-    chunk_id_enum = Enum("ChunkIdEnum", {chunk_id: chunk_id for chunk_id in chunk_ids})
+    `citable_ids` is the union of this request's retrieved AAR chunk IDs and the
+    feature IDs carried by its impact document, if one was supplied. Both share the
+    one feature-reference grammar (`aar:...`, `crossing:...`, `reach:...`), so the
+    model cites current flood facts and historical excerpts the same way, and neither
+    kind can be fabricated (PRD 6.6 output validator).
+    """
+    if not citable_ids:
+        raise ValueError("build_structured_response_schema requires at least one citable id")
+
+    # dict() de-duplicates while preserving order: an ID present in both the retrieved
+    # chunks and the impact document must not produce a duplicate enum member.
+    chunk_id_enum = Enum("ChunkIdEnum", {i: i for i in dict.fromkeys(citable_ids)})
 
     objection_model = create_model(
         "CritiqueObjectionSchema",

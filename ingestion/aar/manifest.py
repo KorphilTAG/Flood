@@ -21,6 +21,16 @@ from .models import (
 )
 
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+# A chunk ID is composed as `aar:<document_id>.p<page>.c<sequence>.<digest16>` and must
+# satisfy the shared feature_ref grammar (common.schema.json#/$defs/aar_ref), whose
+# source_id half allows [A-Za-z0-9_.-] and at most 64 characters. The suffix costs at
+# most len(".p9999.c999.") + 16 == 28 for a 9999-page document with 999 chunks on a
+# page, leaving 36 for the document_id. `pdf.py` re-checks the composed ID, so this
+# bound is a clear early error rather than the thing the invariant rests on.
+_MAX_SOURCE_ID = 64
+_MAX_CHUNK_SUFFIX = len(".p9999.c999.") + 16
+_MAX_DOCUMENT_ID = _MAX_SOURCE_ID - _MAX_CHUNK_SUFFIX  # 36
+_DOCUMENT_ID = re.compile(rf"^[A-Za-z0-9][A-Za-z0-9_.-]{{0,{_MAX_DOCUMENT_ID - 1}}}$")
 _REQUIRED_DOCUMENT_FIELDS = (
     "document_id", "source_category", "title", "publisher", "canonical_url",
     "local_pdf_path", "sha256", "verified_by", "verified_at", "verification_note",
@@ -134,6 +144,11 @@ def validate_manifest(manifest_path: str | Path, *, require_complete: bool = Tru
         if not _nonempty(document_id):
             errors.append(f"{label}: missing document_id")
             document_id = f"<entry {position}>"
+        elif not _DOCUMENT_ID.fullmatch(str(document_id)):
+            errors.append(
+                f"document {document_id}: document_id must match {_DOCUMENT_ID.pattern} "
+                "so its composed aar: citation ID stays a valid feature reference"
+            )
         elif document_id in seen_ids:
             errors.append(f"duplicate document_id: {document_id}")
         seen_ids.add(document_id)
