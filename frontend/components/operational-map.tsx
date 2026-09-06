@@ -8,7 +8,10 @@ import texas from '@/data/texas-boundary.json';
 import {
   areaFootprint,
   containsPoint,
+  floodForecastProgress,
+  projectedPeoplePosition,
   sampleElevation,
+  terrainFloodFootprint,
 } from '@/lib/topography';
 import { fixtureDepth } from '@/lib/operations';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -73,11 +76,11 @@ export default function OperationalMap({
   const [layers, setLayers] = useState({
     flood: true,
     sectors: true,
-    teams: true,
-    hazards: false,
-    people: false,
+    teams: !fieldCopy,
+    hazards: true,
+    people: true,
     landmarks: true,
-    flow: false,
+    flow: true,
   });
   useEffect(() => {
     events.current = { onSelect, onHover };
@@ -322,15 +325,76 @@ export default function OperationalMap({
     const positions = (ring: number[][]) =>
       C.Cartesian3.fromDegreesArray(ring.flat());
     const level = fixtureDepth(1.4, target, initial, member);
-    if (layers.flood)
-      v.entities.add({
-        id: 'flood:extent',
-        corridor: {
-          positions: C.Cartesian3.fromDegreesArray(mock.river),
-          width: Math.max(160, 500 + level * 150),
-          material: color('#218bbe').withAlpha(0.28),
-        },
-      });
+    const progress = floodForecastProgress(target, initial);
+    if (layers.flood) {
+      if (mode3d && dem) {
+        const floodSurface = terrainFloodFootprint(
+          dem,
+          terrain,
+          mock.river,
+          level,
+          progress,
+        );
+        v.entities.add({
+          id: 'flood:extent',
+          polygon: {
+            hierarchy: C.Cartesian3.fromDegreesArrayHeights(
+              floodSurface.flat(),
+            ),
+            perPositionHeight: true,
+            material: color('#1596c7').withAlpha(0.46),
+            outline: true,
+            outlineColor: color('#8ee5ff').withAlpha(0.9),
+          },
+        });
+      } else {
+        v.entities.add({
+          id: 'flood:extent',
+          corridor: {
+            positions: C.Cartesian3.fromDegreesArray(mock.river),
+            width: Math.max(420, 520 + progress * 1280 + level * 180),
+            material: color('#1596c7').withAlpha(0.42),
+            outline: true,
+            outlineColor: color('#8ee5ff').withAlpha(0.85),
+          },
+        });
+      }
+    }
+    // The river remains visible at every time and layer combination so the
+    // forecast's origin is immediately legible.
+    v.entities.add({
+      id: 'source:river-halo',
+      polyline: {
+        positions: C.Cartesian3.fromDegreesArray(mock.river),
+        clampToGround: true,
+        width: 11,
+        material: color('#e9fbff').withAlpha(0.9),
+      },
+    });
+    v.entities.add({
+      id: 'source:river',
+      position: C.Cartesian3.fromDegrees(
+        mock.river[10],
+        mock.river[11],
+        ground(mock.river[10], mock.river[11]) + 30,
+      ),
+      polyline: {
+        positions: C.Cartesian3.fromDegreesArray(mock.river),
+        clampToGround: true,
+        width: 6,
+        material: color('#07557c'),
+      },
+      label: {
+        text: 'GUADALUPE RIVER · FLOOD SOURCE',
+        font: 'bold 14px Arial',
+        fillColor: C.Color.WHITE,
+        showBackground: true,
+        backgroundColor: color('#063e5c').withAlpha(0.96),
+        backgroundPadding: new C.Cartesian2(10, 6),
+        pixelOffset: new C.Cartesian2(0, -24),
+        disableDepthTestDistance: Infinity,
+      },
+    });
     if (layers.flow)
       for (let i = 0; i < mock.river.length - 2; i += 2)
         v.entities.add({
@@ -383,46 +447,72 @@ export default function OperationalMap({
           },
         });
       });
-    if (layers.hazards)
-      mock.sectors
-        .filter((s) => ['Critical', 'High'].includes(s.severity))
-        .forEach((s) =>
-          v.entities.add({
-            id: `hazard:${s.id}`,
-            position: C.Cartesian3.fromDegrees(
-              s.lon + 0.007,
-              s.lat + 0.002,
-              ground(s.lon + 0.007, s.lat + 0.002) + 20,
-            ),
-            label: {
-              text: `${confirmedHazards.includes(s.id) ? '✓' : '▲'} ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
-              font: 'bold 11px Arial',
-              fillColor: color('#ffe0a6'),
-              showBackground: true,
-              backgroundColor: color('#493626'),
-              backgroundPadding: new C.Cartesian2(6, 4),
-              disableDepthTestDistance: Infinity,
-            },
-          }),
-        );
+    if (layers.hazards) {
+      const projectedHazards = mock.sectors.slice(
+        0,
+        Math.min(mock.sectors.length, 2 + Math.floor(progress * 4)),
+      );
+      projectedHazards.forEach((s, index) =>
+        v.entities.add({
+          id: `hazard:${s.id}`,
+          position: C.Cartesian3.fromDegrees(
+            s.lon + 0.007,
+            s.lat + 0.002,
+            ground(s.lon + 0.007, s.lat + 0.002) + 20,
+          ),
+          label: {
+            text: `${confirmedHazards.includes(s.id) ? '✓ CONFIRMED' : index > 1 ? '△ PROJECTED' : '▲'} · ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
+            font: 'bold 12px Arial',
+            fillColor: color('#ffe0a6'),
+            showBackground: true,
+            backgroundColor: color('#493626'),
+            backgroundPadding: new C.Cartesian2(6, 4),
+            disableDepthTestDistance: Infinity,
+          },
+        }),
+      );
+    }
     if (layers.people)
       mock.sectors
         .filter((s) => s.people[1] > 0)
-        .forEach((s) =>
+        .forEach((s, index) => {
+          const [projectedLon, projectedLat] = projectedPeoplePosition(
+            s.lon,
+            s.lat,
+            progress,
+            index,
+          );
+          if (progress > 0.08)
+            v.entities.add({
+              id: `people-path:${s.id}`,
+              polyline: {
+                positions: C.Cartesian3.fromDegreesArray([
+                  s.lon,
+                  s.lat,
+                  projectedLon,
+                  projectedLat,
+                ]),
+                clampToGround: true,
+                width: 3,
+                material: new C.PolylineArrowMaterialProperty(
+                  color('#d65f96').withAlpha(0.9),
+                ),
+              },
+            });
           v.entities.add({
             id: `people:${s.id}`,
             position: C.Cartesian3.fromDegrees(
-              s.lon,
-              s.lat,
-              ground(s.lon, s.lat) + 20,
+              projectedLon,
+              projectedLat,
+              ground(projectedLon, projectedLat) + 20,
             ),
             ellipse: {
-              semiMajorAxis: 600,
-              semiMinorAxis: 450,
+              semiMajorAxis: 420 + progress * 260,
+              semiMinorAxis: 300 + progress * 190,
               material: color('#ae4777').withAlpha(0.14),
             },
             label: {
-              text: `${s.people[0]}–${s.people[1]} people?`,
+              text: `${s.people[0]}–${s.people[1]} people? · ${progress > 0.08 ? 'projected shift' : 'current estimate'}`,
               font: 'bold 12px Arial',
               pixelOffset: new C.Cartesian2(0, 22),
               fillColor: C.Color.WHITE,
@@ -430,8 +520,8 @@ export default function OperationalMap({
               backgroundColor: color('#6b3750'),
               disableDepthTestDistance: Infinity,
             },
-          }),
-        );
+          });
+        });
     if (layers.landmarks)
       mock.places.forEach((s) =>
         v.entities.add({
@@ -542,6 +632,11 @@ export default function OperationalMap({
   const elevation = dem
     ? sampleElevation(dem, terrain, selectedArea.lon, selectedArea.lat)
     : null;
+  const progress = floodForecastProgress(target, initial);
+  const projectedHazardCount = Math.min(
+    mock.sectors.length,
+    2 + Math.floor(progress * 4),
+  );
   return (
     <section
       className={`map-module ${fieldCopy ? 'field-map-copy' : ''}`}
@@ -650,6 +745,13 @@ export default function OperationalMap({
               : 'Blue outline = selected area · shaded footprints are simulated'}
           </small>
         </div>
+        <div className="forecast-map-status">
+          <strong>{Math.round(progress * 100)}% forecast progression</strong>
+          <span>
+            {projectedHazardCount} hazard areas · people estimates reposition
+            with time
+          </span>
+        </div>
       </div>
       <div className="map-caption">
         {basemapIssue ? (
@@ -664,7 +766,7 @@ export default function OperationalMap({
                 initial,
                 member,
               ).toFixed(1)}{' '}
-              m simulated
+              m simulated · terrain-constrained planning estimate
             </span>
             <a
               href={terrain.sources[0].metaUrl}

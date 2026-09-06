@@ -6,6 +6,9 @@ import {
   sampleElevation,
   containsPoint,
   areaFootprint,
+  floodForecastProgress,
+  projectedPeoplePosition,
+  terrainFloodFootprint,
 } from '../lib/topography.ts';
 const metadata = JSON.parse(
   readFileSync(new URL('../data/terrain.json', import.meta.url), 'utf8'),
@@ -71,4 +74,26 @@ void test('Census mask includes Texas locations and excludes neighboring states'
   ])
     assert.equal(containsPoint(ring, lon, lat), false);
   assert.equal(containsPoint(areaFootprint(-99.3, 30), -99.3, 30), true);
+});
+void test('forecast progression and terrain flood footprint change with time', () => {
+  const initial = Date.UTC(2026, 0, 1, 12);
+  assert.equal(
+    floodForecastProgress(initial - 2.5 * 60 * 60 * 1000, initial),
+    0,
+  );
+  assert.equal(
+    floodForecastProgress(initial + 3.5 * 60 * 60 * 1000, initial),
+    1,
+  );
+  const river = [-99.3, 30, -99.29, 30.01, -99.28, 30.02];
+  const early = terrainFloodFootprint(grid, metadata, river, 1, 0);
+  const late = terrainFloodFootprint(grid, metadata, river, 2, 1);
+  assert.equal(early.length, river.length);
+  assert.equal(late.length, river.length);
+  assert.ok(late.every((point) => point.length === 3));
+  assert.notDeepEqual(early, late);
+  const stationary = projectedPeoplePosition(-99.3, 30, 0, 0);
+  const projected = projectedPeoplePosition(-99.3, 30, 1, 0);
+  assert.deepEqual(stationary, [-99.3, 30]);
+  assert.notDeepEqual(projected, stationary);
 });

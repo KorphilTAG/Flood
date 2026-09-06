@@ -860,6 +860,19 @@ export default function Home() {
                         <h2>Approach & hazards</h2>
                         <TriangleAlert size={17} />
                       </div>
+                      <div
+                        className={`field-hazard-banner severity-${fieldSector.severity.toLowerCase()}`}
+                      >
+                        <TriangleAlert size={22} />
+                        <div>
+                          <span>{fieldSector.severity} hazard posture</span>
+                          <strong>{fieldSector.access}</strong>
+                          <small>
+                            Review the hazards below before approaching{' '}
+                            {fieldSector.code}.
+                          </small>
+                        </div>
+                      </div>
                       <div className="field-section">
                         <h3>Access assessment</h3>
                         <p className="access-status">{fieldSector.access}</p>
@@ -951,6 +964,44 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {fieldMapOpen && (
+                <dialog
+                  open
+                  className="phone-map-overlay"
+                  aria-label="Latest area map"
+                >
+                  <header>
+                    <div>
+                      <strong>Latest area map</strong>
+                      <span>{time(clock)} CDT · read-only field copy</span>
+                    </div>
+                    <button
+                      aria-label="Close latest area map"
+                      onClick={() => setFieldMapOpen(false)}
+                    >
+                      <X size={18} />
+                    </button>
+                  </header>
+                  <OperationalMap
+                    selected={fieldMapArea}
+                    onSelect={setFieldMapArea}
+                    confirmedHazards={confirmedHazards}
+                    target={clock}
+                    initial={initialTime}
+                    member="mid"
+                    focus={1}
+                    mode3d={false}
+                    setMode3d={() => {}}
+                    fieldCopy
+                  />
+                  <footer>
+                    {operations.offline
+                      ? 'Offline exercise snapshot'
+                      : 'Latest shared exercise state'}
+                    . Tap an area to inspect its map footprint.
+                  </footer>
+                </dialog>
+              )}
             </div>
           </div>
         </TabsContent>
@@ -967,36 +1018,6 @@ export default function Home() {
           </button>
         </output>
       )}
-      <Dialog open={fieldMapOpen} onOpenChange={setFieldMapOpen}>
-        <DialogContent className="ops-dialog field-map-dialog">
-          <DialogHeader>
-            <DialogTitle>Latest area map</DialogTitle>
-            <DialogDescription>
-              Field copy · updated {time(clock)} CDT ·{' '}
-              {operations.offline
-                ? 'simulated offline; local exercise snapshot'
-                : 'latest shared exercise state'}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <OperationalMap
-            selected={fieldMapArea}
-            onSelect={setFieldMapArea}
-            confirmedHazards={confirmedHazards}
-            target={clock}
-            initial={initialTime}
-            member="mid"
-            focus={1}
-            mode3d={false}
-            setMode3d={() => {}}
-            fieldCopy
-          />
-          <p className="info-note">
-            Read-only field map. Area selection here does not change the Command
-            workspace.
-          </p>
-        </DialogContent>
-      </Dialog>
       <Dialog open={fieldReportsOpen} onOpenChange={setFieldReportsOpen}>
         <DialogContent className="ops-dialog">
           <DialogHeader>
