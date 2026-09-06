@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/impact-json.schema.json",
+  "title": "Impact products (contract 2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "p", "t", "velocity_is_proxy", "facts", "egress", "reaches"],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "run_id": { "$ref": "common.schema.json#/$defs/slug" },
+    "p": {
+      "oneOf": [
+        { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+        { "type": "null" }
+      ],
+      "description": "Null only for a Contract 1 hindsight query."
+    },
+    "t": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+    "velocity_is_proxy": { "const": true },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+    "egress": { "type": "array", "items": { "$ref": "#/$defs/egress" } },
+    "reaches": { "type": "array", "items": { "$ref": "#/$defs/reach" } }
+  },
+  "$defs": {
+    "safe_scalar": {
+      "type": ["string", "number", "integer", "boolean", "null"]
+    },
+    "attributes": {
+      "type": "object",
+      "propertyNames": {
+        "not": { "enum": ["geometry", "coordinates", "lon", "lat"] }
+      },
+      "additionalProperties": { "$ref": "#/$defs/safe_scalar" }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "impacted"],
+      "properties": {
+        "t": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+        "impacted": { "type": "boolean" }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_ref", "kind", "impacted_now", "depth_max_m", "depth_mean_m", "wet_fraction", "hazard_dv_max_m2_per_s", "attributes", "first_impacted_t", "projections"],
+      "properties": {
+        "feature_ref": { "$ref": "common.schema.json#/$defs/feature_ref" },
+        "kind": { "type": "string", "enum": ["impassable", "threatened"] },
+        "impacted_now": { "type": "boolean" },
+        "depth_max_m": { "type": "number", "minimum": 0 },
+        "depth_mean_m": { "type": "number", "minimum": 0 },
+        "wet_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hazard_dv_max_m2_per_s": { "type": "number", "minimum": 0 },
+        "attributes": { "$ref": "#/$defs/attributes" },
+        "first_impacted_t": { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+        "projections": { "type": "array", "items": { "$ref": "#/$defs/projection" } }
+      }
+    },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site_ref", "route_refs", "status", "first_blocked_t"],
+      "properties": {
+        "site_ref": { "$ref": "common.schema.json#/$defs/feature_ref" },
+        "route_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/feature_ref" }, "uniqueItems": true },
+        "status": { "type": "string", "enum": ["open", "blocked", "unknown"] },
+        "first_blocked_t": {
+          "oneOf": [
+            { "$ref": "common.schema.json#/$defs/utc_timestamp" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "reach": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reach_ref", "stage_mid_m", "rate_of_rise_m_per_h", "velocity_ms", "source"],
+      "properties": {
+        "reach_ref": { "$ref": "common.schema.json#/$defs/reach_ref" },
+        "stage_mid_m": { "type": "number", "minimum": 0 },
+        "rate_of_rise_m_per_h": { "type": "number" },
+        "velocity_ms": { "type": "number", "minimum": 0 },
+        "source": { "$ref": "common.schema.json#/$defs/source_kind" }
+      }
+    }
+  }
+}
