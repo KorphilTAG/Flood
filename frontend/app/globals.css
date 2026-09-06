@@ -21,21 +21,21 @@
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--primary);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius-lg: 3px;
   --radius-md: 2px;
   --radius-sm: 2px;
 }
 :root,
 .dark {
-  --background: #151d25;
-  --foreground: #edf1f4;
-  --card: #202b35;
-  --primary: #8cbcdf;
-  --border: #394651;
+  --background: #05080f;
+  --foreground: #dbe7f3;
+  --card: #0c1624;
+  --primary: #7fd7ff;
+  --border: #263d55;
   --radius: 3px;
-  --muted-text: #a9b6c0;
-  --font-geist-sans: Arial, Helvetica, sans-serif;
+  --muted-text: #a5bad0;
+  --font-geist-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-geist-mono: monospace;
 }
 * {
@@ -45,7 +45,11 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   font-size: 16px;
   line-height: 1.45;
 }
@@ -3878,5 +3882,322 @@ body {
   }
   .command-view .map-mode button {
     padding-inline: 8px;
+  }
+}
+
+/* Terrain-view visual language, composed over the viewport sizing rules. */
+.app-header {
+  background: linear-gradient(180deg, #080f1c, #0b1727);
+  border-color: var(--border);
+}
+.simulation-banner {
+  background: #0b1829;
+  border-color: var(--border);
+  color: #b8cee3;
+}
+.simulation-banner strong {
+  color: #7fd7ff;
+}
+.simulation-banner > span {
+  border-color: #35526e;
+}
+.main-navigation [data-slot='tabs-trigger'][data-active] {
+  background: #142b43;
+  border-bottom-color: #7fd7ff;
+}
+.command-view {
+  background: #05080f;
+}
+.priority-panel {
+  margin: 8px 12px 8px 0;
+  height: calc(100% - 16px);
+  border: 1px solid #294057;
+  border-radius: 10px;
+  background: #091321ed;
+  backdrop-filter: blur(8px);
+}
+.priority-panel .panel-title,
+.priority-panel .queue-controls,
+.priority-panel .selected-map-summary,
+.priority-panel .side-tools {
+  background: transparent;
+}
+.area-row {
+  background: transparent;
+  border-bottom-color: #203449;
+}
+.area-row.is-selected {
+  background: #122e49;
+  border-left-color: #7fd7ff;
+}
+.area-row:hover,
+.area-row.is-map-hovered {
+  background: #1b3549;
+}
+.map-workspace {
+  padding: 0 12px 8px;
+}
+.map-module .map-panel {
+  border-color: #29445e;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.map-controls button {
+  background: #0b1727ed;
+  color: #dbe7f3;
+  border-color: #3e5c76;
+  border-radius: 6px;
+}
+.map-selection-label,
+.forecast-map-status {
+  background: #080e18e8;
+  border-color: #426582;
+  border-radius: 7px;
+}
+.time-panel {
+  width: calc(100% - 24px);
+  margin: 0 12px 8px;
+  border: 1px solid #294057;
+  border-radius: 10px;
+  background: #091321eb;
+}
+.water-trend i {
+  background: #4fa3ff;
+}
+.timeline-track [data-slot='slider-range'] {
+  background: #7fd7ff;
+}
+.ops-dialog {
+  background: #0b1523;
+  border: 1px solid #3b5671;
+  border-radius: 10px;
+}
+input,
+textarea,
+.choice,
+[data-slot='select-trigger'] {
+  background: #101e30;
+  border-color: #3c5773;
+  border-radius: 6px;
+  color: #e5f0fa;
+}
+.action-button,
+.status-buttons button,
+.report-preset-grid button,
+.location-presets button,
+.tactics-presets button {
+  border-radius: 6px;
+  border: 1px solid #3a5873;
+  background: #102239;
+  color: #dbe7f3;
+}
+.primary-action,
+.side-tools .primary-action {
+  background: #193f63;
+  border: 1px solid #5aa9e7;
+  color: #f1f8ff;
+}
+.primary-action:hover {
+  background: #235880;
+}
+.tactics-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tactics-presets button {
+  padding: 8px 12px;
+  min-height: 40px;
+  font-size: 14px;
+}
+.tactics-presets button[aria-pressed='true'] {
+  border-color: #7fd7ff;
+  background: #20496b;
+}
+.coverage-summary .coverage-bar [data-slot='progress-indicator'] {
+  background: linear-gradient(
+    to right,
+    #63dcad 0 var(--verified-share),
+    #ffbc66 var(--verified-share) 100%
+  );
+}
+.coverage-summary .coverage-bar [data-slot='progress-track'] {
+  background: #344960;
+}
+.priority-panel .coverage-summary > div:first-child {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.priority-panel .selected-map-summary {
+  flex-basis: 155px;
+}
+.field-view {
+  background: radial-gradient(ellipse at 50% 0%, #122239, #05080f 70%);
+}
+.phone-frame {
+  background: #080f1b;
+  border-color: #3b5a76;
+}
+.phone-status,
+.phone-incident,
+.phone-actions,
+.phone-frame .field-toolbar {
+  background: #0c1929;
+  border-color: #294057;
+}
+.phone-frame .field-task-tabs > [data-slot='tabs-content'] {
+  background: #091421;
+}
+.field-task-navigation {
+  background: #06101c;
+  border-color: #294057;
+}
+.field-task-navigation [data-active] {
+  background: #173a57;
+  color: #eaf7ff;
+}
+.phone-map-overlay {
+  background: #091421;
+  border-color: #456683;
+}
+.phone-map-overlay > header {
+  background: #11253a;
+}
+.phone-report-overlay .report-steps {
+  flex: 0 0 38px;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  margin: 0;
+  background: #07101b;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: #91a8c0;
+}
+.report-steps [aria-current='step'] {
+  color: #7fd7ff;
+  font-weight: 700;
+}
+.phone-report-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.phone-report-body h2 {
+  font-size: 18px;
+}
+.phone-report-body label {
+  font-size: 14px;
+  display: grid;
+  gap: 5px;
+}
+.phone-report-body input {
+  min-height: 38px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.phone-report-body textarea {
+  font-size: 14px;
+  line-height: 1.4;
+  min-height: 148px;
+  resize: none;
+  padding: 10px;
+}
+.phone-report-body small {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #adc0d3;
+}
+.phone-report-body [data-slot='select-trigger'] {
+  width: 100%;
+  min-height: 38px;
+  font-size: 14px;
+}
+.report-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.report-preset-grid button {
+  min-height: 44px;
+  padding: 7px 8px;
+  font-size: 14px;
+}
+.report-preset-grid button[aria-pressed='true'] {
+  background: #204c70;
+  border-color: #7fd7ff;
+  color: white;
+}
+.report-coordinate-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.location-presets {
+  display: flex;
+  gap: 6px;
+}
+.location-presets button {
+  min-height: 38px;
+  flex: 1;
+  padding: 5px;
+  font-size: 12px;
+}
+.phone-report-overlay > footer {
+  flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.phone-report-overlay > footer button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid #4c7192;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.phone-report-overlay > footer button:last-child {
+  margin-left: auto;
+}
+.phone-report-summary {
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.phone-report-body .facts-list > div {
+  padding: 10px 0;
+  gap: 12px;
+}
+.phone-report-body .facts-list dt,
+.phone-report-body .facts-list dd {
+  font-size: 14px;
+}
+.report-map-impact {
+  padding: 12px;
+  border-left: 3px solid #7fd7ff;
+  background: #13283c;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.report-validation {
+  color: #ffbf91;
+  font-size: 12px;
+}
+@media (max-height: 780px) and (min-width: 761px) {
+  .priority-panel .selected-map-summary {
+    flex-basis: 138px;
   }
 }

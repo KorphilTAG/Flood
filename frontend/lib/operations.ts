@@ -25,7 +25,24 @@ export type Report = {
   text: string;
   confidence: string;
   createdAt: number;
+  receivedAt?: number;
+  observation?: MapObservation;
   verifiedAt?: number;
+};
+export type ObservationKind =
+  | 'hazard_present'
+  | 'hazard_absent'
+  | 'people_found'
+  | 'people_relocated'
+  | 'people_not_seen'
+  | 'people_evacuated'
+  | 'note';
+export type MapObservation = {
+  action: ObservationKind;
+  targetId: string;
+  lon: number;
+  lat: number;
+  count?: number;
 };
 export type LogEntry = {
   id: string;
@@ -61,7 +78,8 @@ export function operationsReducer(
     if (
       !report ||
       report.verifiedAt !== undefined ||
-      action.time < report.createdAt
+      action.time <
+        Math.max(report.createdAt, report.receivedAt ?? report.createdAt)
     )
       return state;
     return {
@@ -141,7 +159,10 @@ export function operationsReducer(
       return { ...state, queued: [action.report, ...state.queued] };
     return {
       ...state,
-      reports: [action.report, ...state.reports],
+      reports: [
+        { ...action.report, receivedAt: action.report.createdAt },
+        ...state.reports,
+      ],
       log: [
         {
           id: action.report.id,
@@ -155,9 +176,9 @@ export function operationsReducer(
   }
   if (action.type === 'connectivity') {
     if (action.offline) return { ...state, offline: true };
-    const incoming = state.queued.filter(
-      (r) => !state.reports.some((existing) => existing.id === r.id),
-    );
+    const incoming = state.queued
+      .filter((r) => !state.reports.some((existing) => existing.id === r.id))
+      .map((r) => ({ ...r, receivedAt: Math.max(action.time, r.createdAt) }));
     return {
       ...state,
       offline: false,
@@ -195,7 +216,9 @@ export function visibleReports(
   cutoff: number,
 ) {
   return state.reports.filter(
-    (r) => r.sectorId === sectorId && r.createdAt <= cutoff,
+    (r) =>
+      r.sectorId === sectorId &&
+      Math.max(r.createdAt, r.receivedAt ?? r.createdAt) <= cutoff,
   );
 }
 export function fixtureDepth(

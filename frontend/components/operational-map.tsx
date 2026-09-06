@@ -9,24 +9,22 @@ import {
   areaFootprint,
   containsPoint,
   floodForecastProgress,
-  projectedPeoplePosition,
   sampleElevation,
   terrainFloodFootprint,
 } from '@/lib/topography';
 import { fixtureDepth } from '@/lib/operations';
+import type { MapFeature } from '@/lib/live-map';
 import { Checkbox } from '@/components/ui/checkbox';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 
 type Props = {
   selected: string;
-  confirmedHazards: string[];
+  features: MapFeature[];
   onSelect: (id: string) => void;
   target: number;
   initial: number;
   member: string;
   focus: number;
-  mode3d: boolean;
-  setMode3d: (v: boolean) => void;
   fieldCopy?: boolean;
   onHover?: (id: string | null) => void;
 };
@@ -50,17 +48,16 @@ function loadElevation() {
 }
 export default function OperationalMap({
   selected,
-  confirmedHazards,
+  features,
   onSelect,
   target,
   initial,
   member,
   focus,
-  mode3d,
-  setMode3d,
   fieldCopy = false,
   onHover,
 }: Props) {
+  const mode3d = true;
   const container = useRef<HTMLDivElement>(null),
     viewer = useRef<Cesium.Viewer | null>(null),
     api = useRef<typeof Cesium | null>(null);
@@ -82,12 +79,8 @@ export default function OperationalMap({
     landmarks: true,
     flow: true,
   });
-  const progress = floodForecastProgress(target, initial);
-  const projectedHazards = mock.sectors.filter(
-    (s, index) =>
-      index < 3 ||
-      confirmedHazards.includes(s.id) ||
-      progress >= (index === 3 ? 0.55 : 0.8),
+  const projectedHazards = features.filter(
+    (f) => f.category === 'hazard' && f.active,
   );
   useEffect(() => {
     events.current = { onSelect, onHover };
@@ -102,7 +95,7 @@ export default function OperationalMap({
       .catch(() => {
         if (active)
           setElevationError(
-            'Historical terrain could not load. Switch to 2D or retry the page; no synthetic terrain is substituted.',
+            'Historical terrain could not load. Reload to retry; observations remain available in the area panel.',
           );
       });
     return () => {
@@ -144,7 +137,7 @@ export default function OperationalMap({
           fullscreenButton: false,
           selectionIndicator: false,
           infoBox: false,
-          sceneMode: C.SceneMode.SCENE2D,
+          sceneMode: C.SceneMode.SCENE3D,
           terrainProvider: new C.EllipsoidTerrainProvider(),
           requestRenderMode: true,
           maximumRenderTimeChange: Infinity,
@@ -169,13 +162,10 @@ export default function OperationalMap({
           ],
         });
         v.scene.globe.maximumScreenSpaceError = 1;
-        const provider = new C.OpenStreetMapImageryProvider({
-          url: 'https://tile.openstreetmap.org/',
-          minimumLevel: 4,
-          rectangle: C.Rectangle.fromDegrees(
-            ...(txBounds as [number, number, number, number]),
-          ),
-          maximumLevel: 19,
+        const provider = new C.UrlTemplateImageryProvider({
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+          credit: 'Esri, HERE, Garmin, OpenStreetMap contributors',
+          maximumLevel: 16,
         });
         provider.errorEvent.addEventListener(() => {
           if (!cancelled) setBasemapIssue(true);
@@ -192,10 +182,12 @@ export default function OperationalMap({
           ),
         });
         const pickedArea = (position: Cesium.Cartesian2) => {
-          const id = v.scene.pick(position)?.id?.id;
-          if (typeof id !== 'string') return null;
-          const area = id.replace(/^(hazard|people):/, '');
-          return mock.sectors.some((s) => s.id === area) ? area : null;
+          const entity = v.scene.pick(position)?.id;
+          const sector = entity?.properties?.sectorId?.getValue();
+          if (typeof sector === 'string') return sector;
+          return mock.sectors.some((s) => s.id === entity?.id)
+            ? (entity.id as string)
+            : null;
         };
         handler = new C.ScreenSpaceEventHandler(v.scene.canvas);
         handler.setInputAction((e: { position: Cesium.Cartesian2 }) => {
@@ -301,11 +293,7 @@ export default function OperationalMap({
           return heights;
         },
       });
-      v.scene.globe.material = C.Material.fromType('ElevationContour', {
-        color: C.Color.fromCssColorString('#344839').withAlpha(0.7),
-        spacing: 20,
-        width: 1,
-      });
+      v.scene.globe.material = undefined;
       v.scene.morphTo3D(0);
     } else {
       v.scene.globe.material = undefined;
@@ -313,8 +301,8 @@ export default function OperationalMap({
       v.scene.morphTo2D(0);
     }
     const imagery = v.imageryLayers.get(0);
-    imagery.alpha = mode3d ? 0.55 : 1;
-    imagery.saturation = mode3d ? 0.3 : 1;
+    imagery.alpha = 1;
+    imagery.saturation = 0.65;
     imagery.brightness = 1;
     v.scene.screenSpaceCameraController.maximumZoomDistance = mode3d
       ? 28000
@@ -359,13 +347,10 @@ export default function OperationalMap({
         v.entities.add({
           id: 'flood:extent',
           polygon: {
-            hierarchy: C.Cartesian3.fromDegreesArrayHeights(
-              floodSurface.flat(),
+            hierarchy: C.Cartesian3.fromDegreesArray(
+              floodSurface.flatMap((point) => point.slice(0, 2)),
             ),
-            perPositionHeight: true,
-            material: color('#1596c7').withAlpha(0.46),
-            outline: true,
-            outlineColor: color('#8ee5ff').withAlpha(0.9),
+            material: color('#2a7fff').withAlpha(0.5),
           },
         });
       } else {
@@ -468,88 +453,86 @@ export default function OperationalMap({
           },
         });
       });
-    if (layers.hazards) {
-      const projectedHazards = mock.sectors.filter(
-        (s, index) =>
-          index < 3 ||
-          confirmedHazards.includes(s.id) ||
-          progress >= (index === 3 ? 0.55 : 0.8),
-      );
-      projectedHazards.forEach((s, index) =>
-        v.entities.add({
-          id: `hazard:${s.id}`,
-          position: C.Cartesian3.fromDegrees(
-            s.lon + 0.007,
-            s.lat + 0.002,
-            ground(s.lon + 0.007, s.lat + 0.002) + 20,
-          ),
-          ellipse: {
-            semiMajorAxis: 180 + progress * 300,
-            semiMinorAxis: 130 + progress * 210,
-            material: color('#dc8031').withAlpha(0.2),
-          },
-          label: {
-            text: `${confirmedHazards.includes(s.id) || s.state === 'Confirmed' ? '✓' : index > 2 ? '△ PROJECTED' : '▲'} ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
-            font: 'bold 12px Arial',
-            fillColor: color('#ffe0a6'),
-            showBackground: true,
-            backgroundColor: color('#493626'),
-            backgroundPadding: new C.Cartesian2(6, 4),
-            disableDepthTestDistance: Infinity,
-          },
-        }),
-      );
-    }
-    if (layers.people)
-      mock.sectors
-        .filter((s) => s.people[1] > 0)
-        .forEach((s, index) => {
-          const [projectedLon, projectedLat] = projectedPeoplePosition(
-            s.lon,
-            s.lat,
-            progress,
-            index,
-          );
-          if (progress > 0.08)
-            v.entities.add({
-              id: `people-path:${s.id}`,
-              polyline: {
-                positions: C.Cartesian3.fromDegreesArray([
-                  s.lon,
-                  s.lat,
-                  projectedLon,
-                  projectedLat,
-                ]),
-                clampToGround: true,
-                width: 3,
-                material: new C.PolylineArrowMaterialProperty(
-                  color('#d65f96').withAlpha(0.9),
-                ),
+    for (const feature of features) {
+      if (!(feature.category === 'hazard' ? layers.hazards : layers.people))
+        continue;
+      if (!feature.active && feature.state === 'predicted') continue;
+      const verified = feature.state === 'verified';
+      const predicted = feature.state === 'predicted';
+      const hue = !feature.active
+        ? '#80dab8'
+        : predicted
+          ? '#7fd7ff'
+          : verified
+            ? '#63dcad'
+            : '#ffbc66';
+      const prefix = predicted ? '?' : verified ? '✓' : '◇';
+      const count =
+        feature.category === 'people' && feature.active
+          ? `${feature.count[0] === feature.count[1] ? feature.count[0] : feature.count.join('–')} · `
+          : '';
+      v.entities.add({
+        id: feature.id,
+        properties: { sectorId: feature.sectorId },
+        position: C.Cartesian3.fromDegrees(
+          feature.lon,
+          feature.lat,
+          ground(feature.lon, feature.lat) + 25,
+        ),
+        point: {
+          pixelSize: predicted ? 8 : 13,
+          color: color(hue),
+          outlineColor: color('#07111f'),
+          outlineWidth: 2,
+          disableDepthTestDistance: Infinity,
+        },
+        ...(feature.active
+          ? {
+              ellipse: {
+                semiMajorAxis:
+                  (feature.category === 'hazard' ? 180 : 300) +
+                  (predicted ? progress * 250 : 0),
+                semiMinorAxis:
+                  (feature.category === 'hazard' ? 130 : 230) +
+                  (predicted ? progress * 180 : 0),
+                material: color(hue).withAlpha(predicted ? 0.1 : 0.2),
               },
-            });
-          v.entities.add({
-            id: `people:${s.id}`,
-            position: C.Cartesian3.fromDegrees(
-              projectedLon,
-              projectedLat,
-              ground(projectedLon, projectedLat) + 20,
+            }
+          : {}),
+        label: {
+          text: `${prefix} ${count}${feature.label} · ${feature.state}`,
+          font: 'bold 12px Arial',
+          pixelOffset: new C.Cartesian2(
+            0,
+            feature.category === 'people' ? 28 : -25,
+          ),
+          fillColor: color(hue),
+          showBackground: true,
+          backgroundColor: color('#080e18').withAlpha(0.94),
+          backgroundPadding: new C.Cartesian2(8, 5),
+          disableDepthTestDistance: Infinity,
+        },
+      });
+      if (predicted && feature.category === 'people') {
+        const origin = mock.sectors.find((s) => s.id === feature.sectorId)!;
+        v.entities.add({
+          id: `movement:${feature.id}`,
+          polyline: {
+            positions: C.Cartesian3.fromDegreesArray([
+              origin.lon,
+              origin.lat,
+              feature.lon,
+              feature.lat,
+            ]),
+            clampToGround: true,
+            width: 4,
+            material: new C.PolylineArrowMaterialProperty(
+              color('#7fd7ff').withAlpha(0.7),
             ),
-            ellipse: {
-              semiMajorAxis: 420 + progress * 260,
-              semiMinorAxis: 300 + progress * 190,
-              material: color('#ae4777').withAlpha(0.14),
-            },
-            label: {
-              text: `${s.people[0]}–${s.people[1]} people?`,
-              font: 'bold 12px Arial',
-              pixelOffset: new C.Cartesian2(0, 22),
-              fillColor: C.Color.WHITE,
-              showBackground: true,
-              backgroundColor: color('#6b3750'),
-              disableDepthTestDistance: Infinity,
-            },
-          });
+          },
         });
+      }
+    }
     if (layers.landmarks)
       mock.places.forEach((s) =>
         v.entities.add({
@@ -562,9 +545,9 @@ export default function OperationalMap({
           label: {
             text: `◆ ${s.name}`,
             font: '12px Arial',
-            fillColor: color('#213f39'),
+            fillColor: color('#dbe7f3'),
             showBackground: true,
-            backgroundColor: C.Color.WHITE.withAlpha(0.9),
+            backgroundColor: color('#080e18').withAlpha(0.94),
             disableDepthTestDistance: Infinity,
           },
         }),
@@ -589,9 +572,9 @@ export default function OperationalMap({
             text: s.name,
             font: '11px Arial',
             pixelOffset: new C.Cartesian2(0, 17),
-            fillColor: color('#154e41'),
+            fillColor: color('#7fd7ff'),
             showBackground: true,
-            backgroundColor: C.Color.WHITE.withAlpha(0.9),
+            backgroundColor: color('#080e18').withAlpha(0.94),
             disableDepthTestDistance: Infinity,
           },
         }),
@@ -605,7 +588,7 @@ export default function OperationalMap({
     target,
     initial,
     member,
-    confirmedHazards,
+    features,
     fieldCopy,
   ]);
   useEffect(() => {
@@ -645,11 +628,11 @@ export default function OperationalMap({
       }
     });
     v.scene.requestRender();
-  }, [ready, selected, hovered, layers, dem, mode3d, target, confirmedHazards]);
+  }, [ready, selected, hovered, layers, dem, mode3d, target, features]);
   useEffect(() => {
     const v = viewer.current,
       C = api.current;
-    if (!ready || !v || !C || focus === 0) return;
+    if (!ready || !v || !C || !dem || focus === 0) return;
     const s = mock.sectors.find((s) => s.id === selected);
     if (!s) return;
     v.camera.setView({
@@ -664,7 +647,7 @@ export default function OperationalMap({
       orientation: { heading: 0, pitch: C.Math.toRadians(-65), roll: 0 },
     });
     v.scene.requestRender();
-  }, [focus, selected, ready, mode3d]);
+  }, [focus, selected, ready, mode3d, dem]);
   const selectedArea =
     mock.sectors.find((s) => s.id === selected) ?? mock.sectors[0];
   const elevation = dem
@@ -676,16 +659,6 @@ export default function OperationalMap({
       aria-label={fieldCopy ? 'Latest field area map' : 'Texas operational map'}
     >
       <div className="map-toolbar">
-        {!fieldCopy && (
-          <fieldset className="map-mode" aria-label="Map dimension">
-            <button aria-pressed={!mode3d} onClick={() => setMode3d(false)}>
-              2D streets
-            </button>
-            <button aria-pressed={mode3d} onClick={() => setMode3d(true)}>
-              3D terrain
-            </button>
-          </fieldset>
-        )}
         <span className="river-source-key">
           <i aria-hidden="true" /> Guadalupe River · flood source
         </span>
@@ -733,7 +706,7 @@ export default function OperationalMap({
           <output className="map-loading">
             {mode3d
               ? 'Loading historical USGS elevation…'
-              : 'Loading Texas street map…'}
+              : 'Loading terrain map…'}
           </output>
         )}
         {(error || (mode3d && elevationError)) && (
@@ -788,9 +761,7 @@ export default function OperationalMap({
             }).format(target)}{' '}
             CDT · {projectedHazards.length} hazard areas
           </strong>
-          <span>
-            Blue: flood spread · pink arrows: possible people movement
-          </span>
+          <span>? Predicted · ◇ Reported · ✓ Verified</span>
         </div>
       </div>
       <div className="map-caption">
@@ -806,7 +777,7 @@ export default function OperationalMap({
                 initial,
                 member,
               ).toFixed(1)}{' '}
-              m simulated · contours 20 m
+              m predicted · historical terrain
             </span>
             <a
               href={terrain.sources[0].metaUrl}
@@ -817,10 +788,7 @@ export default function OperationalMap({
             </a>
           </>
         ) : (
-          <span>
-            Street map © OpenStreetMap contributors · footprints and flood
-            overlays simulated
-          </span>
+          <span>Esri basemap · USGS terrain · flood estimates simulated</span>
         )}
       </div>
     </section>

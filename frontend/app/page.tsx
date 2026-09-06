@@ -1,5 +1,11 @@
 'use client';
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   Activity,
   ArrowRight,
@@ -24,6 +30,10 @@ import {
 import mock from '@/data/mock.json';
 import scenario from '@/data/scenario.json';
 import OperationalMap from '@/components/operational-map';
+import FieldObservationForm, {
+  type ObservationDraft,
+} from '@/components/field-observation-form';
+import { deriveLiveMap, tacticsPresets } from '@/lib/live-map';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
@@ -51,9 +61,7 @@ import {
 } from '@/components/ui/table';
 import {
   fixtureDepth,
-  evidenceCoverage,
   objectivePresets,
-  observationPresets,
   operationsReducer,
   visibleReports,
   type Operations,
@@ -75,11 +83,13 @@ const initialOperations: Operations = {
   reports: [],
   queued: [],
   offline: false,
-  log: mock.changes.map((entry, i) => ({
-    id: `seed-${i}`,
-    time: initialTime - (i + 1) * 240000,
-    text: entry.text,
-  })),
+  log: [
+    {
+      id: 'model-start',
+      time: initialTime,
+      text: 'Initial probabilistic map loaded · awaiting field observations',
+    },
+  ],
 };
 function time(value: number) {
   return new Intl.DateTimeFormat('en-US', {
@@ -156,8 +166,7 @@ export default function Home() {
     t = clock;
   const [filter, setFilter] = useState('all'),
     [query, setQuery] = useState(''),
-    [focus, setFocus] = useState(0),
-    [mode3d, setMode3d] = useState(false);
+    [focus, setFocus] = useState(0);
   const [operations, dispatch] = useReducer(
     operationsReducer,
     initialOperations,
@@ -167,12 +176,8 @@ export default function Home() {
     [activityOpen, setActivityOpen] = useState(false);
   const [assignTeam, setAssignTeam] = useState(''),
     [objective, setObjective] = useState('');
-  const [reportOpen, setReportOpen] = useState(false),
-    [reportStage, setReportStage] = useState('edit'),
-    [reportType, setReportType] = useState('Access'),
-    [reportText, setReportText] = useState(''),
-    [reportConfidence, setReportConfidence] = useState('Medium');
-  const [fieldTab, setFieldTab] = useState('assignment'),
+  const [reportOpen, setReportOpen] = useState(false);
+  const [fieldTab, setFieldTab] = useState('access'),
     [fieldDetailsOpen, setFieldDetailsOpen] = useState(false),
     [hazardPage, setHazardPage] = useState(0),
     [objectivePage, setObjectivePage] = useState(0),
@@ -184,21 +189,37 @@ export default function Home() {
     [reviews, setReviews] = useState<
       Record<string, { plan: string; at: number; findings: string[] }>
     >({});
-  const selected =
-    mock.sectors.find((s) => s.id === selectedId) ?? mock.sectors[0];
-  const depth = fixtureDepth(selected.depth, t, initialTime, member);
-  const confirmedHazards = useMemo(
-    () =>
-      operations.reports
-        .filter(
-          (r) =>
-            r.kind === 'Hazard' &&
-            r.verifiedAt !== undefined &&
-            r.verifiedAt <= p,
-        )
-        .map((r) => r.sectorId),
-    [operations.reports, p],
+  const liveMap = useMemo(
+    () => deriveLiveMap(mock.sectors, operations.reports, p, t, initialTime),
+    [operations.reports, p, t],
   );
+  const sectors = mock.sectors.map((s) => {
+    const local = liveMap.features.filter((f) => f.sectorId === s.id);
+    const people = local.filter((f) => f.category === 'people' && f.active);
+    const state = local.some((f) => f.state === 'reported')
+      ? 'Reported'
+      : local.some((f) => f.state === 'verified')
+        ? 'Confirmed'
+        : 'Inferred';
+    return {
+      ...s,
+      state,
+      people: [
+        people.reduce((n, f) => n + (f.count[0] ?? 0), 0),
+        people.reduce((n, f) => n + (f.count[1] ?? 0), 0),
+      ],
+      evidence: s.evidence.map((e) => ({
+        ...e,
+        state: 'Inferred',
+        source: 'Initial model hypothesis',
+      })),
+    };
+  });
+  const selected = sectors.find((s) => s.id === selectedId) ?? sectors[0];
+  const selectedFeatures = liveMap.features.filter(
+    (f) => f.sectorId === selectedId,
+  );
+  const depth = fixtureDepth(selected.depth, t, initialTime, member);
   const fieldAssignment = operations.assignments.find(
     (a) => a.teamId === fieldTeam,
   );
@@ -212,18 +233,34 @@ export default function Home() {
   }, [fieldAssignment?.objective]);
   const objectiveIndex = Math.min(objectivePage, objectivePages.length - 1);
   const fieldSector =
-    mock.sectors.find((s) => s.id === fieldAssignment?.sectorId) ?? selected;
+    sectors.find((s) => s.id === fieldAssignment?.sectorId) ?? selected;
+  const fieldHazard = liveMap.features.find(
+    (f) =>
+      f.sectorId === fieldSector.id &&
+      f.category === 'hazard' &&
+      f.state !== 'predicted',
+  );
   const fieldTeamData =
     mock.teams.find((team) => team.id === fieldTeam) ?? mock.teams[1];
-  const hazardIndex = Math.min(hazardPage, fieldSector.evidence.length - 1);
-  const fieldEvidence = fieldSector.evidence[hazardIndex];
+  const fieldEvidenceList = [
+    ...liveMap.features
+      .filter((f) => f.sectorId === fieldSector.id && f.state !== 'predicted')
+      .map((f) => ({
+        state: f.state === 'verified' ? 'Confirmed' : 'Reported',
+        label: `${f.label}${f.category === 'people' && f.active ? ` · ${f.count[1]} people` : ''}`,
+        source: `${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} · ${time(f.observedAt!)}`,
+      })),
+    ...fieldSector.evidence,
+  ];
+  const hazardIndex = Math.min(hazardPage, fieldEvidenceList.length - 1);
+  const fieldEvidence = fieldEvidenceList[hazardIndex];
   const available = mock.teams.filter(
     (team) =>
       !operations.assignments.some(
         (a) => a.teamId === team.id && a.status !== 'Recon complete',
       ),
   );
-  const filtered = mock.sectors.filter(
+  const filtered = sectors.filter(
     (s) =>
       (filter === 'all' || s.state === filter) &&
       (s.name + ' ' + s.code + ' ' + s.kind)
@@ -239,12 +276,7 @@ export default function Home() {
     selected.age + Math.floor((p - initialTime) / 60000),
   );
   const review = reviews[selected.id];
-  const coverage = evidenceCoverage(
-    operations,
-    selected.id,
-    p,
-    selected.evidence,
-  );
+  const coverage = liveMap.coverage;
   const presets = objectivePresets(
     mock.teams.find((team) => team.id === assignTeam)?.capability ??
       selected.capability,
@@ -305,26 +337,22 @@ export default function Home() {
       'Assignment approved. The selected team’s Field workspace now has the objective.',
     );
   }
-  function submitReport() {
+  function submitReport(draft: ObservationDraft) {
     dispatch({
       type: 'report',
       report: {
         id: crypto.randomUUID(),
         teamId: fieldTeam,
         sectorId: fieldSector.id,
-        kind: reportType,
-        text: reportText.trim(),
-        confidence: reportConfidence,
+        ...draft,
         createdAt: clock,
       },
     });
     setReportOpen(false);
-    setReportText('');
-    setReportStage('edit');
     setNotice(
       operations.offline
         ? 'Report queued on this session. Resume simulated sync to share it with Command.'
-        : 'Report received by Command as reported evidence; verification is still required.',
+        : 'Map updated with your observation. Command can review and verify it.',
     );
   }
   function reviewPlan() {
@@ -397,8 +425,8 @@ export default function Home() {
           <ShieldCheck size={14} />
           <strong>SIMULATION</strong>
           <span>
-            Flood estimates, people counts, teams, and reports are simulated. 3D
-            ground elevation uses historical USGS data.
+            Exercise · predictions become field-informed as reports arrive.
+            Historical USGS terrain; no emergency dispatch.
           </span>
         </div>
         <TabsContent value="command" className="command-view">
@@ -426,9 +454,7 @@ export default function Home() {
                 initial={initialTime}
                 member={member}
                 focus={focus}
-                mode3d={mode3d}
-                setMode3d={setMode3d}
-                confirmedHazards={confirmedHazards}
+                features={liveMap.features}
               />
             </div>
             <aside className="priority-panel" aria-label="Priority areas">
@@ -513,7 +539,12 @@ export default function Home() {
                   <strong>{selected.name}</strong>
                 </div>
                 <div>
-                  <span>People estimated</span>
+                  <span>
+                    People ·{' '}
+                    {selected.state === 'Inferred'
+                      ? 'predicted'
+                      : 'field-informed'}
+                  </span>
                   <strong>
                     {selected.people[1]
                       ? `${selected.people[0]}–${selected.people[1]}`
@@ -527,19 +558,27 @@ export default function Home() {
                 <div className="coverage-summary" aria-live="polite">
                   <div>
                     <strong>{coverage.verified}% verified</strong>
-                    <span>{coverage.modeled}% modeled / unverified</span>
+                    <span>
+                      {coverage.reported}% reported · {coverage.modeled}%
+                      predicted
+                    </span>
                   </div>
                   <Progress
                     className="coverage-bar"
-                    value={coverage.verified}
-                    aria-label="Verified share of exercise evidence records"
+                    style={
+                      {
+                        '--verified-share': `${coverage.verified + coverage.reported ? (100 * coverage.verified) / (coverage.verified + coverage.reported) : 0}%`,
+                      } as CSSProperties
+                    }
+                    value={coverage.verified + coverage.reported}
+                    aria-label={`${coverage.verified}% verified, ${coverage.reported}% reported, ${coverage.modeled}% predicted map features`}
                   />
                   <small>
-                    Incident evidence · {coverage.confirmed}/{coverage.total}{' '}
-                    records verified · live feed 0%
+                    {coverage.verifiedCount + coverage.reportedCount}/
+                    {coverage.total} map features field-informed
                   </small>
                   <small>
-                    {coverage.pending} field report(s) awaiting review
+                    {coverage.reportedCount} map update(s) awaiting review
                   </small>
                 </div>
               </div>
@@ -700,7 +739,7 @@ export default function Home() {
               </div>
               <div
                 className="phone-screen"
-                inert={fieldMapOpen || fieldDetailsOpen}
+                inert={fieldMapOpen || fieldDetailsOpen || reportOpen}
               >
                 <div className="phone-incident">
                   <strong>{mock.incidentName}</strong>
@@ -764,11 +803,11 @@ export default function Home() {
                     className="field-task-tabs"
                   >
                     <TabsList className="field-task-navigation">
-                      <TabsTrigger value="assignment">
-                        Current assignment
-                      </TabsTrigger>
                       <TabsTrigger value="access">
                         Approach & hazards
+                      </TabsTrigger>
+                      <TabsTrigger value="assignment">
+                        Current assignment
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="assignment" className="mission-panel">
@@ -882,8 +921,14 @@ export default function Home() {
                       >
                         <TriangleAlert size={22} />
                         <div>
-                          <span>{fieldSector.severity} hazard posture</span>
-                          <strong>{fieldSector.access}</strong>
+                          <span>
+                            {fieldHazard
+                              ? `${fieldHazard.state} observation`
+                              : `${fieldSector.severity} · predicted`}
+                          </span>
+                          <strong>
+                            {fieldHazard?.label ?? fieldSector.access}
+                          </strong>
                           <small>
                             {fieldSector.code} · {fieldSector.name}
                           </small>
@@ -913,7 +958,7 @@ export default function Home() {
                         <div className="hazard-page-heading">
                           <h3>Hazards & observations</h3>
                           <span>
-                            {hazardIndex + 1} / {fieldSector.evidence.length}
+                            {hazardIndex + 1} / {fieldEvidenceList.length}
                           </span>
                         </div>
                         <article className="evidence-item" aria-live="polite">
@@ -930,7 +975,7 @@ export default function Home() {
                           </button>
                           <button
                             disabled={
-                              hazardIndex === fieldSector.evidence.length - 1
+                              hazardIndex === fieldEvidenceList.length - 1
                             }
                             onClick={() => setHazardPage(hazardIndex + 1)}
                           >
@@ -961,7 +1006,6 @@ export default function Home() {
                         className="action-button primary-action"
                         onClick={() => {
                           setReportOpen(true);
-                          setReportStage('edit');
                         }}
                       >
                         <Send size={17} />
@@ -992,6 +1036,15 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {reportOpen && (
+                <FieldObservationForm
+                  area={fieldSector}
+                  features={liveMap.features}
+                  offline={operations.offline}
+                  onClose={() => setReportOpen(false)}
+                  onSubmit={submitReport}
+                />
+              )}
               {fieldDetailsOpen && fieldAssignment && (
                 <dialog
                   open
@@ -1054,13 +1107,11 @@ export default function Home() {
                   <OperationalMap
                     selected={fieldMapArea}
                     onSelect={setFieldMapArea}
-                    confirmedHazards={confirmedHazards}
+                    features={liveMap.features}
                     target={clock}
                     initial={initialTime}
                     member="mid"
                     focus={1}
-                    mode3d={false}
-                    setMode3d={() => {}}
                     fieldCopy
                   />
                   <footer>
@@ -1321,7 +1372,7 @@ export default function Home() {
                               id: crypto.randomUUID(),
                             });
                             setNotice(
-                              'Observation verified in this exercise. Area data coverage updated.',
+                              'Observation verified. The map marker and evidence coverage are updated.',
                             );
                           }}
                         >
@@ -1404,6 +1455,19 @@ export default function Home() {
                   <label className="form-label" htmlFor="plan">
                     Proposed tactics
                   </label>
+                  <div className="tactics-presets">
+                    {tacticsPresets(selected.name, selectedFeatures).map(
+                      (prompt) => (
+                        <button
+                          key={prompt.label}
+                          aria-pressed={plan === prompt.text}
+                          onClick={() => setPlan(prompt.text)}
+                        >
+                          {prompt.label}
+                        </button>
+                      ),
+                    )}
+                  </div>
                   <textarea
                     id="plan"
                     value={plan}
@@ -1538,127 +1602,6 @@ export default function Home() {
               )}
             </div>
           </aside>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="ops-dialog">
-          <DialogHeader>
-            <DialogTitle>
-              {reportStage === 'edit'
-                ? 'Report an observation'
-                : 'Review observation'}
-            </DialogTitle>
-            <DialogDescription>
-              {fieldTeamData.name} · Area {fieldSector.code} · {time(clock)}{' '}
-              CDT. Reports enter Command as unverified evidence.
-            </DialogDescription>
-          </DialogHeader>
-          {reportStage === 'edit' ? (
-            <>
-              <label className="form-label" htmlFor="report-type">
-                Report type
-              </label>
-              <Choice
-                id="report-type"
-                label="Report type"
-                value={reportType}
-                onChange={setReportType}
-                options={[
-                  'Access',
-                  'Hazard',
-                  'Assistance needs',
-                  'Search progress',
-                ].map((v) => ({ value: v, label: v }))}
-              />
-              <label className="form-label" htmlFor="observation">
-                What did you observe?
-              </label>
-              <div className="observation-presets">
-                {observationPresets(reportType, fieldSector.code).map(
-                  (prompt) => (
-                    <button
-                      key={prompt.label}
-                      className="action-button"
-                      aria-pressed={reportText === prompt.text}
-                      onClick={() => setReportText(prompt.text)}
-                    >
-                      {prompt.label}
-                    </button>
-                  ),
-                )}
-              </div>
-              <small className="muted">
-                Choose what you observed, then edit any details before sending.
-              </small>
-              <textarea
-                id="observation"
-                rows={5}
-                value={reportText}
-                onChange={(e) => setReportText(e.target.value)}
-                placeholder="State the location, conditions, and what still needs verification."
-              />
-              <label className="form-label" htmlFor="report-confidence">
-                Your confidence
-              </label>
-              <Choice
-                id="report-confidence"
-                label="Report confidence"
-                value={reportConfidence}
-                onChange={setReportConfidence}
-                options={['Low', 'Medium', 'High'].map((v) => ({
-                  value: v,
-                  label: v,
-                }))}
-              />
-              <button
-                className="action-button primary-action"
-                disabled={reportText.trim().length < 8}
-                onClick={() => setReportStage('review')}
-              >
-                Review report <ArrowRight size={15} />
-              </button>
-            </>
-          ) : (
-            <>
-              <dl className="facts-list">
-                <div>
-                  <dt>Type</dt>
-                  <dd>{reportType}</dd>
-                </div>
-                <div>
-                  <dt>Confidence</dt>
-                  <dd>{reportConfidence}</dd>
-                </div>
-                <div>
-                  <dt>Delivery</dt>
-                  <dd>
-                    {operations.offline
-                      ? 'Queue in this session'
-                      : 'Send to simulated Command'}
-                  </dd>
-                </div>
-              </dl>
-              <p className="report-preview">{reportText}</p>
-              <p className="info-note">
-                This does not notify emergency services or a real command
-                center.
-              </p>
-              <div className="dialog-actions">
-                <button
-                  className="action-button"
-                  onClick={() => setReportStage('edit')}
-                >
-                  Back to edit
-                </button>
-                <button
-                  className="action-button primary-action"
-                  onClick={submitReport}
-                >
-                  {operations.offline ? 'Queue report' : 'Submit report'}
-                </button>
-              </div>
-            </>
-          )}
         </DialogContent>
       </Dialog>
       <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
