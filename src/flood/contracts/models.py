@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 UTC_TIMESTAMP_REGEX = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
 SLUG_REGEX = r"^[a-z0-9][a-z0-9-]{2,63}$"
 LAYER_ID_REGEX = r"^[a-z][a-z0-9_]{0,31}$"
+SQL_IDENT_REGEX = r"^[a-z][a-z0-9_]{0,62}$"
 FEATURE_REF_REGEX = r"^[a-z][a-z0-9_]{0,31}:[A-Za-z0-9_.-]{1,64}$"
 REACH_REF_REGEX = r"^reach:[0-9]{1,12}$"
 GAUGE_REF_REGEX = r"^gauge:[0-9]{8,15}$"
@@ -170,10 +171,18 @@ class EgressConfig(BaseContractModel):
     join_field: str = Field(min_length=1)
 
 
+class PostgisMapping(BaseContractModel):
+    """Where an exposure layer actually lives. Lower-case SQL identifiers only."""
+    schema_: Annotated[str, Field(alias="schema", pattern=SQL_IDENT_REGEX)]
+    table: Annotated[str, Field(pattern=SQL_IDENT_REGEX)]
+    geometry_column: Annotated[str, Field(pattern=SQL_IDENT_REGEX)]
+
+
 class ExposureLayer(BaseContractModel):
     layer_id: Annotated[str, Field(pattern=LAYER_ID_REGEX)]
     name: str = Field(min_length=1)
     source: str = Field(min_length=1)
+    postgis: PostgisMapping | None = None
     id_field: str = Field(min_length=1)
     geometry: Literal["point", "line", "polygon"]
     attributes: list[str] = Field(default_factory=list)

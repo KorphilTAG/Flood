@@ -6,7 +6,7 @@ The data contracts between components. Agree these first, stub them with canned 
 |---|---|---|---|---|---|
 | 0 | Scenario file and exposure layer registry | Humans | Every component | [scenario.md](scenario.md) | Drafted 2026-09-05 |
 | 1 | Physics products: manifest, rasters, reach and gauge tables, engine API | Physics engine | Impact extractor, run store, verifier UI, product UI | [contract-1-physics-products.md](contract-1-physics-products.md) | Drafted 2026-09-05 |
-| 2 | Impact JSON | Impact extractor | LLM layer, UI | To be written in the master spec | |
+| 2 | Impact JSON | Impact extractor | LLM layer, UI | [contract-2-impact-products.md](contract-2-impact-products.md) | Defined 2026-09-05 |
 | 3 | Overlay JSON | LLM enrichment agent | UI | To be written in the master spec | |
 | 4 | Session state | Session state store | LLM layer, UI, training mode, AAR generator | To be written in the master spec | |
 

@@ -77,6 +77,15 @@
           },
           "name": { "type": "string", "minLength": 1 },
           "source": { "type": "string", "minLength": 1 },
+          "postgis": {
+            "type": "object", "additionalProperties": false,
+            "required": ["schema", "table", "geometry_column"],
+            "properties": {
+              "schema": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+              "table": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+              "geometry_column": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" }
+            }
+          },
           "id_field": { "type": "string", "minLength": 1 },
           "geometry": { "type": "string", "enum": ["point", "line", "polygon"] },
           "attributes": { "type": "array", "items": { "type": "string" }, "default": [] },

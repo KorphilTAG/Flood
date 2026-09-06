@@ -27,7 +27,8 @@ Each entry declares one layer. The extractor iterates the list and never names a
 |---|---|
 | `layer_id` | Lowercase slug, becomes the prefix in `<layer_id>:<source_id>`. Must not be `reach`, `gauge`, or `aar`. |
 | `name` | Display name |
-| `source` | Path to a GeoPackage, GeoParquet, or GeoJSON, relative to the scenario file |
+| `source` | Path to a GeoPackage, GeoParquet, or GeoJSON, relative to the scenario file. This remains the raw-ingest source; the impact extractor does not query it. |
+| `postgis` | Optional explicit PostGIS read mapping. The impact extractor requires it: `schema`, `table`, and `geometry_column` are lower-case SQL identifiers. It reads no convention derived from `source` or `layer_id`. |
 | `id_field` | Attribute holding the stable source ID. IDs must be unique within the layer. |
 | `geometry` | `point`, `line`, or `polygon` |
 | `attributes[]` | Attribute names carried through to impact JSON unchanged |
@@ -36,4 +37,4 @@ Each entry declares one layer. The extractor iterates the list and never names a
 | `impact.hazard_dv_limit` | Optional: depth times velocity above which the feature is reported hazardous regardless of depth |
 | `egress.routes_layer` | Optional, polygons: the line layer whose features are this site's egress routes, joined by `egress.join_field` on the route layer holding the site's source ID |
 
-The Kerr County example declares `crossing`, `road`, `structure`, and `site`. A different scenario may declare entirely different layers.
+The Kerr County example declares `crossing`, `road`, `structure`, and `site`. Each maps to `flood_exposure.kerr_2025_07_04_<layer_id>` with geometry column `geometry`. A different scenario may declare entirely different layers.
