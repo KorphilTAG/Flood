@@ -19,6 +19,11 @@
     "feature_ref": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}:[A-Za-z0-9_.-]{1,64}$" },
     "reach_ref": { "type": "string", "pattern": "^reach:[0-9]{1,12}$" },
     "gauge_ref": { "type": "string", "pattern": "^gauge:[0-9]{8,15}$" },
+    "aar_ref": {
+      "type": "string",
+      "pattern": "^aar:[A-Za-z0-9_.-]{1,64}$",
+      "description": "AAR corpus citation chunk, shaped as aar:<document_id>.p<page>.c<sequence>.<digest16>. A feature_ref in the reserved 'aar' layer, so one grammar covers every ID an LLM may cite."
+    },
     "usgs_site": { "type": "string", "pattern": "^[0-9]{8,15}$" },
     "huc8": { "type": "string", "pattern": "^[0-9]{8}$" },
     "fim_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" },

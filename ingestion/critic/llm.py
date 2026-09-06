@@ -27,6 +27,7 @@ def _default_generator(
     *,
     settings: Settings,
     correction: str | None = None,
+    impact_text: str | None = None,
 ) -> BaseModel:
     # Imported lazily so importing this module (and constructing the FastAPI
     # app) never requires `langchain_openai`'s OpenAI client to validate an
@@ -35,7 +36,9 @@ def _default_generator(
 
     llm = ChatOpenAI(model=settings.openai_model, temperature=0, timeout=settings.request_timeout)
     structured_llm = llm.with_structured_output(response_schema)
-    human_message = build_human_message(plan, situation, decision_point, chunks, correction=correction)
+    human_message = build_human_message(
+        plan, situation, decision_point, chunks, correction=correction, impact_text=impact_text
+    )
     return structured_llm.invoke([("system", SYSTEM_PROMPT), ("human", human_message)])
 
 
@@ -49,6 +52,7 @@ def generate_critique(
     generator: Generator | None = None,
     settings: Settings | None = None,
     correction: str | None = None,
+    impact_text: str | None = None,
 ) -> BaseModel:
     """Call the LLM (or an injected fake) to produce a structured critique.
 
@@ -65,9 +69,16 @@ def generate_critique(
     only when set, so an existing fake `generator` with no `correction`
     parameter (every fake generator in `historical-critic-api`'s tests)
     remains valid, unmodified, on a first, uncorrected attempt.
+
+    `impact_text`, when not `None`, is the rendered Contract 2 flood facts for this
+    request (`facts.py::ImpactFacts.render`). It is forwarded on the same terms as
+    `correction` -- only when set -- so a fake `generator` written before impact
+    facts existed stays valid, unmodified, for a request that carries none.
     """
     call = generator or _default_generator
     kwargs: dict = {"settings": settings or Settings()}
     if correction is not None:
         kwargs["correction"] = correction
+    if impact_text is not None:
+        kwargs["impact_text"] = impact_text
     return call(plan, situation, decision_point, chunks, response_schema, **kwargs)

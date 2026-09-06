@@ -17,7 +17,11 @@ DEFAULT_BOUNDARY_PATH = os.path.join(
     os.path.dirname(__file__), "..", "data", "kerr_county_boundary.geojson"
 )
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# overpass-api.de itself is the canonical instance, but its abuse-protection can
+# temporarily block a client IP after a burst of requests (observed 2026-09-06);
+# Kumi Systems mirrors the same public dataset on separate infrastructure.
+# Override with OVERPASS_URL if a different mirror is preferred.
+OVERPASS_URL = os.environ.get("OVERPASS_URL", "https://overpass.kumi.systems/api/interpreter")
 
 TIGER_COUNTY_URL = "https://www2.census.gov/geo/tiger/TIGER2022/COUNTY/tl_2022_us_county.zip"
 
@@ -73,11 +77,18 @@ def query_arcgis_feature_server(
     where: str = "1=1",
     out_fields: str = "*",
     timeout: int = 120,
+    page_size: int = 2000,
 ) -> dict:
     """Query an ArcGIS FeatureServer/MapServer layer, filtered to a boundary
     polygon, and return the response as a GeoJSON FeatureCollection dict.
+
+    Paginates with resultOffset/resultRecordCount until a page comes back
+    shorter than `page_size`: a hosted feature service silently caps a single
+    response at its own `maxRecordCount` (2000 for TxDOT's services) rather
+    than erroring, so a naive single request can under-report a large area's
+    features with no indication anything was dropped.
     """
-    params = {
+    base_params = {
         "where": where,
         "outFields": out_fields,
         "geometry": _geojson_geometry_to_esri_json(boundary_geojson),
@@ -86,10 +97,23 @@ def query_arcgis_feature_server(
         "inSR": 4326,
         "outSR": 4326,
         "f": "geojson",
+        "resultRecordCount": page_size,
     }
-    resp = requests.get(url, params=params, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    features = []
+    offset = 0
+    while True:
+        params = {**base_params, "resultOffset": offset}
+        # POST, not GET: the boundary polygon has enough vertices that its ESRI
+        # JSON geometry exceeds most servers' URL length limit as a query string.
+        resp = requests.post(url, data=params, timeout=timeout)
+        resp.raise_for_status()
+        page = resp.json()
+        page_features = page.get("features", [])
+        features.extend(page_features)
+        if len(page_features) < page_size:
+            break
+        offset += page_size
+    return {"type": "FeatureCollection", "features": features}
 
 
 def _geojson_geometry_to_esri_json(geom: dict) -> str:
@@ -116,9 +140,20 @@ def overpass_bbox(boundary_geom) -> tuple:
     return (miny, minx, maxy, maxx)
 
 
+# Public Overpass mirrors rate-limit/reject the bare "python-requests/x.y" default
+# User-Agent as unidentifiable traffic (observed 406/429 against overpass-api.de and
+# overpass.kumi.systems on 2026-09-06); they ask for a real, identifying string.
+OVERPASS_USER_AGENT = "flood-ingestion/1.0 (Kerr County exposure-layer ingestion; contact: see repo README)"
+
+
 def overpass_query(query: str, timeout: int = 180) -> dict:
     """Run a raw Overpass QL query and return the parsed JSON response."""
-    resp = requests.post(OVERPASS_URL, data={"data": query}, timeout=timeout)
+    resp = requests.post(
+        OVERPASS_URL,
+        data={"data": query},
+        headers={"User-Agent": OVERPASS_USER_AGENT},
+        timeout=timeout,
+    )
     resp.raise_for_status()
     return resp.json()
 

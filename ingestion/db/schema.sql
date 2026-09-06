@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS river_network (
 );
 CREATE INDEX IF NOT EXISTS river_network_geom_gix ON river_network USING GIST (geom);
 
--- Building footprints (OSM, building=*), clipped to the Kerr County boundary.
+-- Building footprints (FEMA USA Structures), clipped to the Kerr County boundary.
 CREATE TABLE IF NOT EXISTS buildings (
     feature_id  TEXT PRIMARY KEY,
     source      TEXT NOT NULL,
@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS buildings (
 );
 CREATE INDEX IF NOT EXISTS buildings_geom_gix ON buildings USING GIST (geom);
 
--- Low-water crossings (OSM ford=yes / bridge=low_water_crossing).
+-- USGS road--stream crossing candidates. They are not a verified low-water
+-- crossing inventory; ``crossing_type`` remains in attributes for review.
 -- hmp_verified_name / hmp_cross_checked are placeholders for the manual HMP/EOP
 -- cross-check (PRD 6.1) and are NOT populated by this feature's ingestion scripts.
 CREATE TABLE IF NOT EXISTS crossings (
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS crossings (
     source_id           TEXT NOT NULL,
     geom                GEOMETRY(Geometry, 4326) NOT NULL,
     attributes          JSONB NOT NULL DEFAULT '{}'::jsonb,
-    osm_tag             TEXT,
+    osm_tag             TEXT, -- retained for legacy OSM rows; NULL for USGS records
     hmp_verified_name   TEXT,
     hmp_cross_checked   BOOLEAN NOT NULL DEFAULT false,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()

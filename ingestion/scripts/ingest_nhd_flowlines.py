@@ -20,11 +20,14 @@ NHD_FLOWLINE_FEATURE_SERVER_URL = (
 
 HUC8 = "12100201"
 SOURCE = "nhd"
-ID_FIELD = "NHDPlusID"
+# This MapServer's fields are all lower-case (verified against layer 3's /query?f=json
+# field list on 2026-09-06), unlike the FGDB-style "NHDPlusID"/"REACHCODE" naming used
+# in NHDPlus HR documentation and file exports.
+ID_FIELD = "nhdplusid"
 
 
 def fetch_flowlines(boundary_geojson: dict) -> gpd.GeoDataFrame:
-    where = f"REACHCODE LIKE '{HUC8}%'"
+    where = f"reachcode LIKE '{HUC8}%'"
     data = ArcGISFeatureServerTool().invoke(
         {"url": NHD_FLOWLINE_FEATURE_SERVER_URL, "boundary_geojson": boundary_geojson, "where": where}
     )

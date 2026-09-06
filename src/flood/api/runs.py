@@ -15,8 +15,23 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from flood.api.errors import APIError
 from flood.contracts.validate import ContractError, validate_json
+from flood.impact.exposure_fusion import (
+    ExposureFusionError,
+    compute_exposure_layer,
+    depth_threshold_for,
+    load_vulnerability_geojson,
+    validate_exposure_layer,
+    weights_from_geojson,
+)
+from flood.impact.extractor import impact_path
 from flood.interfaces import Grid, RASTER_BANDS
 from flood.products.raster import render_overlay_png
+from flood.timegrid import parse_iso, snap_p, snap_t
+from flood.search_area.estimator import (
+    DEFAULT_SEARCH_AREA_CONFIG,
+    SearchAreaInputError,
+    estimate_missing_person_search_area,
+)
 from flood.scenario import load_scenario
 from flood.timegrid import to_iso
 from flood.timegrid import to_iso
@@ -372,6 +387,83 @@ def get_gauges(
     return JSONResponse(status_code=200, content=rows)
 
 
+# output/demographic_risk.geojson is frozen model output (Addendum 1/2), identical for every
+# run of the scenario, so it is read from disk once per path and kept in memory thereafter.
+_VULNERABILITY_GEOJSON_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _get_vulnerability_geojson(settings: Any) -> dict[str, Any]:
+    path = Path(getattr(settings, "demographic_risk_geojson", "project/output/demographic_risk.geojson"))
+    key = str(path)
+    cached = _VULNERABILITY_GEOJSON_CACHE.get(key)
+    if cached is None:
+        cached = load_vulnerability_geojson(path) if path.is_file() else {"type": "FeatureCollection", "features": []}
+        _VULNERABILITY_GEOJSON_CACHE[key] = cached
+    return cached
+
+
+@router.get("/{run_id}/vulnerability.geojson")
+def get_vulnerability_geojson(
+    run_id: str,
+    request: Request,
+    store: Any = Depends(get_store),
+) -> JSONResponse:
+    """Static demographic vulnerability layer (Addendum 1): frozen, time-invariant, per scenario."""
+    _get_run(store, run_id)
+    geojson = _get_vulnerability_geojson(request.app.state.settings)
+    return JSONResponse(status_code=200, content=geojson, media_type="application/geo+json")
+
+
+@router.get("/{run_id}/exposure")
+def get_exposure(
+    run_id: str,
+    request: Request,
+    p: str | None = None,
+    t: str | None = None,
+    precomputed: bool = False,
+    store: Any = Depends(get_store),
+) -> JSONResponse:
+    """Live hazard-fused vulnerability density points for one tick (Addendum 2).
+
+    Reads the impact extractor's already-written Contract 2 document for the resolved (p, t)
+    rather than computing it inline (Contract 2 is a batch product requiring a PostGIS
+    connection -- see `flood impacts extract`). If it has not been extracted yet for this tick,
+    returns an empty list rather than erroring or rendering a false hotspot: the frontend simply
+    shows nothing for this layer at this moment.
+    """
+    if not p or not t:
+        raise APIError(
+            status_code=400,
+            code="missing_parameter",
+            message="Both 'p' and 't' query parameters are required",
+        )
+    run = _get_run(store, run_id)
+    if precomputed:
+        p, t, _ = _snap_to_precomputed(run, p, t)
+    # Snapped independently of any particular Run implementation (matches what `flood impacts
+    # extract` snapped to when it named the file), rather than via a run.resolve() that not
+    # every RunStore backend implements.
+    p_dt = None if (p is None or str(p).lower() == "hindsight") else snap_p(parse_iso(p))
+    t_dt = snap_t(parse_iso(t))
+    impact_file = impact_path(run.run_dir, p_dt, t_dt)
+    if not impact_file.is_file():
+        return JSONResponse(status_code=200, content=[])
+
+    impact_payload = json.loads(impact_file.read_text(encoding="utf-8"))
+    geojson = _get_vulnerability_geojson(request.app.state.settings)
+    weights = weights_from_geojson(geojson)
+    threshold_m = depth_threshold_for(getattr(run, "scenario", None))
+    features = compute_exposure_layer(
+        impact_payload, weights, depth_threshold_m=threshold_m, run_id=getattr(run, "run_id", None)
+    )
+    try:
+        validate_exposure_layer(features, impact_payload)
+        validate_json("exposure-density", features)
+    except (ExposureFusionError, ContractError) as exc:
+        raise APIError(status_code=500, code="invalid_exposure_layer", message=str(exc))
+    return JSONResponse(status_code=200, content=features)
+
+
 @router.get("/{run_id}/raster")
 def get_raster(
     run_id: str,
@@ -678,3 +770,37 @@ def get_hindsight_file(
     guessed_type, _ = mimetypes.guess_type(target_file)
     media_type = guessed_type or "application/octet-stream"
     return range_file_response(target_file, request.headers.get("Range"), media_type=media_type)
+
+
+@router.get("/{run_id}/search-area")
+def get_search_area(
+    run_id: str,
+    p: str | None = None,
+    t: str | None = None,
+    last_known_position_id: str | None = None,
+    store: Any = Depends(get_store),
+) -> JSONResponse:
+    """Probability-ranked search-priority polygons for one declared last-known position.
+
+    This is the LLM layer's access path to the search-area tool: it lives in this
+    package but the reasoning layer runs in another process, so an HTTP route is what
+    makes it reachable at all (PRD 6.6 "Search-area tool", Milestone 4).
+
+    The result is deliberately three uncertain, ranked polygons with uncalibrated
+    relative weights -- never a single predicted position for a person.
+    """
+    if not t or not last_known_position_id:
+        raise APIError(
+            status_code=400,
+            code="missing_parameter",
+            message="'t' and 'last_known_position_id' query parameters are required",
+        )
+    run = _get_run(store, run_id)
+    try:
+        result = estimate_missing_person_search_area(
+            run, p, t, last_known_position_id, config=DEFAULT_SEARCH_AREA_CONFIG
+        )
+    except SearchAreaInputError as exc:
+        # A bad last-known-position id or an out-of-record query is caller input.
+        raise APIError(status_code=400, code="invalid_search_area_request", message=str(exc))
+    return JSONResponse(status_code=200, content=result)

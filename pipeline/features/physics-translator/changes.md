@@ -79,16 +79,16 @@ it in a fixture teardown.
 
 ## Residual risk
 
-- **Exposure relations named by the spec do not exist yet.** The spec fixes the Kerr mapping
-  as `flood_exposure.kerr_2025_07_04_<layer_id>` with geometry column `geometry`, and both
-  the contract example and the active scenario now say that. The ingestion feature actually
-  creates `public.roads`, `public.crossings`, `public.buildings`, and `public.camps` with
-  geometry column `geom` (`ingestion/db/schema.sql`). As instructed, the spec was followed
-  for the scenario and the ingestion DDL was left alone, so no third naming scheme was
-  invented — but `flood impacts extract` will not read real data until someone reconciles
-  the two, either by creating `flood_exposure` views over the ingest tables or by amending
-  the scenario mapping. The mismatch is configuration-only: no layer name, schema, or column
-  appears in code.
+- ~~**Exposure relations named by the spec do not exist yet.**~~ **Resolved in a follow-up
+  pass.** `ingestion/db/exposure_views.sql` now creates `flood_exposure.kerr_2025_07_04_*`
+  views over the ingest tables, renaming `geom` to `geometry` and projecting each layer's
+  declared id field and attribute allow-list. `schema.sql` was not changed. Verified against
+  a live PostGIS 16-3.4: `Find_SRID` resolves on the views, the AOI bbox filter works, and
+  `PostGISExposureStore` loads all four layers. That pass also found and fixed two real bugs
+  this mismatch had been hiding — the ingest `feature_id` (`crossing:osm:node/1`) is already
+  layer-prefixed and contains `/`, which the `feature_ref` grammar forbids, and the store
+  never fetched the egress `join_field`, so egress could never have resolved against a real
+  database.
 - **The live-database path is proven only against a throwaway PostGIS 16-3.4.** The opt-in
   tests passed there (`read_postgis` used, bbox filter applied, reprojection to the raster
   CRS, schema dropped), but the adapter has never run against the project's own compose

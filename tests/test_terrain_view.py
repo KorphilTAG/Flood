@@ -22,6 +22,8 @@ TERRAIN_CONTRACT_PATHS = [
     "/runs/{run}/gauges?p=",
     "/runs/{run}/overlay.png?p=&t=&band=&max_px=&smooth=",
     "/runs/{run}/network.geojson",
+    "/runs/{run}/vulnerability.geojson",
+    "/runs/{run}/exposure?p=&t=",
     "/clock",
     "/clock/ws",
 ]

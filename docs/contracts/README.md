@@ -9,6 +9,9 @@ The data contracts between components. Agree these first, stub them with canned 
 | 2 | Impact JSON | Impact extractor | LLM layer, UI | [contract-2-impact-products.md](contract-2-impact-products.md) | Defined 2026-09-05 |
 | 3 | Overlay JSON | LLM enrichment agent | UI | To be written in the master spec | |
 | 4 | Session state | Session state store | LLM layer, UI, training mode, AAR generator | To be written in the master spec | |
+| -- | Exposure density (PRD Addendum 2: hazard-fused vulnerability heatmap) | Runs API (`GET /runs/{run_id}/exposure`) | Terrain UI | [exposure-density.schema.json](schemas/exposure-density.schema.json) | Defined 2026-09-06 |
+
+The exposure-density contract is a narrow, purpose-built schema for one map layer -- the downstream `vulnerability_weight x hazard_severity` fusion described in the Addendum 2 spec -- not the general-purpose Contract 3, which remains undefined.
 
 Machine-readable schemas are JSON Schema 2020-12 under [schemas/](schemas/). Every schema has at least one example under [examples/](examples/) that validates against it. A change that breaks a consumer bumps `schema_version`'s major number.
 

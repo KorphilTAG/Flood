@@ -1,7 +1,7 @@
 # Ingestion
 
 Loads exposure-layer map data (roads, river network, building footprints,
-low-water crossings, camp footprint schema) into PostGIS with stable
+road--stream crossings, camp footprint schema) into PostGIS with stable
 `feature_id`s, per `pipeline/features/map-data-ingestion/spec.md`.
 
 ## Setup
@@ -45,25 +45,57 @@ python -m scripts.fetch_kerr_county_boundary
 # 2. Load each automated layer
 python -m scripts.ingest_txdot_roads
 python -m scripts.ingest_nhd_flowlines
-python -m scripts.ingest_osm_buildings
-python -m scripts.ingest_osm_crossings
+python -m scripts.ingest_fema_buildings
+python -m scripts.ingest_usgs_crossings
 
 # 3. Camps: generic loader, run only once a real (or test) file exists
 python -m scripts.ingest_camps --input <path to GeoJSON/Shapefile> --source <source-name>
 
 # 4. Verify
 python -m scripts.verify_exposure_layers
+
+# 5. Expose the loaded tables under the names the scenario registry declares
+psql "$FLOOD_POSTGIS_DSN" -f db/exposure_views.sql
 ```
 
+Step 5 creates the `flood_exposure.kerr_2025_07_04_*` views the Contract 0 exposure
+registry points at (`scenarios/kerr-2025-07-04.json`). The ingestion tables above are
+shaped for loading -- one row shape per layer, a `geom` column, free-form JSONB
+attributes -- while the registry declares per-layer id fields, an attribute allow-list
+and a `geometry` column. `db/exposure_views.sql` is the adapter between the two, so
+`schema.sql` needs no change and the impact extractor
+(`flood impacts extract`) can read the layers as configured.
+
 All four automated ingestion scripts (`ingest_txdot_roads.py`,
-`ingest_nhd_flowlines.py`, `ingest_osm_buildings.py`,
-`ingest_osm_crossings.py`) are idempotent: re-running any of them against
+`ingest_nhd_flowlines.py`, `ingest_fema_buildings.py`,
+`ingest_usgs_crossings.py`) are idempotent: re-running any of them against
 unchanged source data upserts in place (`ON CONFLICT (feature_id) DO
 UPDATE`) rather than duplicating rows or reassigning `feature_id`.
 
-**Note:** steps 1–4 require network access (Census TIGER, TxDOT ArcGIS,
-USGS National Map, the public Overpass API) and a reachable PostGIS
+**Note:** steps 1–4 require network access (Census TIGER and public ArcGIS
+FeatureServer/MapServer endpoints for TxDOT, USGS, and FEMA) and a reachable PostGIS
 instance. They are not run as part of the automated test suite below.
+
+### Building and crossing sources
+
+`ingest_fema_buildings.py` reads FEMA USA Structures building polygons through
+an anonymous ArcGIS FeatureServer query. It spatially matches each frozen
+vulnerability model centroid (whose identity is an OSM building ID) to the
+FEMA footprint that contains it, retaining FEMA's `GlobalID` and attributes as
+provenance. The source-derived OSM-compatible match ID is what the structure
+view exposes, so Contract 2 facts can join the frozen vulnerability weights;
+`OCC_CLS` is copied to the scenario's normalized `building` attribute.
+
+`ingest_usgs_crossings.py` reads the USGS Database of Stream Crossings point
+layer. Its `stream_crossing_id` becomes the stable source ID; the TIGER road
+name is normalized to `name`, and the original `crossing_type` is retained in
+attributes. This is a road--stream-crossing candidate layer, not a verified
+low-water-crossing inventory. It must not be used to claim that every feature
+is a low-water crossing; manual HMP/EOP verification remains necessary.
+
+The earlier `ingest_osm_buildings.py` and `ingest_osm_crossings.py` scripts
+remain available as optional OSM-source alternatives, but are not part of the
+default workflow while public Overpass endpoints are unavailable.
 
 ## Fetch layer (LangChain tools)
 
@@ -73,8 +105,8 @@ calling `requests`/`lib.geo` directly:
 
 | Tool | Wraps | Used by |
 |---|---|---|
-| `ArcGISFeatureServerTool` | `lib.geo.query_arcgis_feature_server` | `ingest_txdot_roads.py`, `ingest_nhd_flowlines.py` |
-| `OverpassApiTool` | `lib.geo.overpass_query` | `ingest_osm_buildings.py`, `ingest_osm_crossings.py` |
+| `ArcGISFeatureServerTool` | `lib.geo.query_arcgis_feature_server` | `ingest_txdot_roads.py`, `ingest_nhd_flowlines.py`, `ingest_fema_buildings.py`, `ingest_usgs_crossings.py` |
+| `OverpassApiTool` | `lib.geo.overpass_query` | Optional legacy OSM loaders only |
 | `CensusTigerCountyBoundaryTool` | `lib.geo.fetch_tiger_county_boundary` | `fetch_kerr_county_boundary.py` |
 
 Each tool has a Pydantic `args_schema` and is invoked directly and
@@ -92,9 +124,9 @@ cd ingestion
 python -m scripts.live_smoke_test
 ```
 
-Calls the real TxDOT ArcGIS FeatureServer, the real USGS NHDPlus HR
-MapServer, the public Overpass API (buildings and crossings queries), and
-Census TIGER, and prints a PASS/FAIL line per source. Requires network
+Calls the real TxDOT ArcGIS FeatureServer, the USGS NHDPlus HR MapServer,
+the FEMA USA Structures FeatureServer, the USGS stream-crossings
+FeatureServer, and Census TIGER, and prints a PASS/FAIL line per source. Requires network
 access; does not write to PostGIS. Not run in CI or by the default `pytest`
 suite below (it is not a pytest test module, so `pytest --collect-only`
 never lists it). Run this at least once before trusting the four live-source
@@ -125,7 +157,22 @@ human curator must save each authoritative, text-extractable PDF locally and
 manually verify its title, publisher, canonical URL, SHA-256 checksum, curator
 identity, verification time, and verification note before processing it.
 
-Start from `aar/sources/manifest.example.json`, but do not build that
+To save typing, `scripts/draft_aar_manifest.py` scans a sources directory and writes
+a draft manifest with the mechanically derivable fields already filled -- SHA-256, page
+count, and the title each document prints on its own first page:
+
+```bash
+python -m scripts.draft_aar_manifest --sources ../data/aar/sources \
+    --output aar/sources/manifest.draft.json
+```
+
+It deliberately leaves `publisher`, `canonical_url`, `verified_by`, `verified_at`, and
+`verification_note` blank and every entry at `status: "pending"`, so the draft *fails*
+`aar validate` until a curator supplies provenance. It never guesses a URL and never
+attests to a document it cannot authenticate -- that gate is the reason the corpus can
+be cited at all.
+
+Start from `aar/sources/manifest.example.json` or a generated draft, but do not build a
 placeholder manifest. Store real PDFs and the corresponding verified manifest
 under ignored `data/aar/`. The production manifest must include a verified
 entry for every required category: Texas House/Senate committee materials, Kerr

@@ -18,6 +18,7 @@ SCHEMA_NAMES = (
     "gauge-row",
     "state-response",
     "impact-json",
+    "exposure-density",
 )
 
 

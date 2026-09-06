@@ -16,6 +16,8 @@ export const API = {
   gauges: '/runs/{run}/gauges?p=',
   overlay: '/runs/{run}/overlay.png?p=&t=&band=&max_px=&smooth=',
   network: '/runs/{run}/network.geojson',
+  vulnerability: '/runs/{run}/vulnerability.geojson',
+  exposure: '/runs/{run}/exposure?p=&t=',
   clock: '/clock',
   clockWs: '/clock/ws',
 };
@@ -99,6 +101,10 @@ export const state = {
   showReaches: true,
   showGauges: true,
   precomputedOnly: true, // nearest prewarmed product; never start a computation
+  // Addendum 2: two independent, off-by-default demographic context layers -- neither
+  // replaces the other, and neither is a core map element (PRD Addendum 2, Section 3/7).
+  showVulnerability: false,
+  showExposure: false,
 
   clock: null,
   t: null,
@@ -112,6 +118,7 @@ export const state = {
   lastKey: null,
   lastGaugeKey: null,
   lastState: null,
+  footprintCentroids: new Map(), // structure feature_ref -> [lon, lat], from the static layer
 };
 
 let map = null;
@@ -362,6 +369,11 @@ function buildStyle() {
     'hillshade-dem': { type: 'raster-dem', tiles: TERRAIN_TILES, encoding: 'terrarium', tileSize: 256, maxzoom: 15 },
     depth: { type: 'image', url: TRANSPARENT_PX, coordinates: PLACEHOLDER_COORDS },
     reaches: { type: 'geojson', data: emptyFC(), promoteId: 'feature_id' },
+    // Addendum 2: static (Addendum 1) and live-fused vulnerability layers. Both are
+    // time-invariant *sources* that just get new data pushed in; only their layer
+    // visibility toggles.
+    'vulnerability-static': { type: 'geojson', data: emptyFC() },
+    'exposure-live': { type: 'geojson', data: emptyFC() },
   };
   for (const [k, b] of Object.entries(BASEMAPS)) {
     sources[`basemap-${k}`] = { type: 'raster', tiles: b.tiles, tileSize: 256, maxzoom: b.maxzoom, attribution: b.attribution };
@@ -389,6 +401,46 @@ function buildStyle() {
       'hillshade-shadow-color': '#020509',
       'hillshade-highlight-color': '#6d8fb0',
       'hillshade-accent-color': '#0b1a2c',
+    },
+  });
+  // Addendum 2 ordering: below the live hazard tiles, above terrain/hillshade, so current
+  // flood conditions always visually dominate these supplementary demographic layers.
+  layers.push({
+    id: 'vulnerability-heat',
+    type: 'heatmap',
+    source: 'vulnerability-static',
+    layout: { visibility: state.showVulnerability ? 'visible' : 'none' },
+    paint: {
+      'heatmap-weight': ['coalesce', ['get', 'weight'], 0],
+      'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 14, 1.4],
+      'heatmap-color': [
+        'interpolate', ['linear'], ['heatmap-density'],
+        0, 'rgba(0,0,0,0)',
+        0.3, '#c9b7ff',
+        0.6, '#8f6bff',
+        1, '#4b1fbd',
+      ],
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 12, 14, 28],
+      'heatmap-opacity': 0.75,
+    },
+  });
+  layers.push({
+    id: 'exposure-heat',
+    type: 'heatmap',
+    source: 'exposure-live',
+    layout: { visibility: state.showExposure ? 'visible' : 'none' },
+    paint: {
+      'heatmap-weight': ['coalesce', ['get', 'weight'], 0],
+      'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 14, 1.4],
+      'heatmap-color': [
+        'interpolate', ['linear'], ['heatmap-density'],
+        0, 'rgba(0,0,0,0)',
+        0.3, '#ffffb2',
+        0.6, '#fd8d3c',
+        1, '#bd0026',
+      ],
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 12, 14, 28],
+      'heatmap-opacity': 0.8,
     },
   });
   layers.push({
@@ -528,6 +580,52 @@ function applyOverlay({ blobUrl, bounds4326, bounds3857 }) {
     blobUrls.push(blobUrl);
     while (blobUrls.length > 2) URL.revokeObjectURL(blobUrls.shift());
   });
+}
+
+// Mirrors flood.impact.exposure_fusion.demographic_feature_id_to_feature_ref exactly. The
+// ingest-time FEMA/static identity match has already aligned the static OSM ID with the
+// impact extractor's structure ID, so this remains a deterministic transform at render time.
+function demographicFeatureIdToFeatureRef(featureId, layerId = 'structure') {
+  const stripped = String(featureId).replace(/^[a-z_]+:/, '');
+  return `${layerId}:${stripped.replace(/[:/]/g, '.')}`;
+}
+
+function applyVulnerability(fc) {
+  state.footprintCentroids = new Map();
+  for (const f of fc.features || []) {
+    const fid = f.properties && f.properties.feature_id;
+    if (!fid || !f.geometry || f.geometry.type !== 'Point') continue;
+    state.footprintCentroids.set(demographicFeatureIdToFeatureRef(fid), f.geometry.coordinates);
+  }
+  whenStyleReady(() => map.getSource('vulnerability-static')?.setData(fc));
+}
+
+async function fetchExposure(p, t, signal) {
+  // Supplementary layer: never block or error out the main refresh cycle if it is unavailable
+  // (e.g. this tick has not been through `flood impacts extract` yet).
+  try {
+    return await fetchJson(apiUrl(API.exposure, { p, t, precomputed: state.precomputedOnly ? 1 : null }), signal);
+  } catch {
+    return [];
+  }
+}
+
+function applyExposure(features) {
+  const fc = {
+    type: 'FeatureCollection',
+    features: (features || [])
+      .map((f) => {
+        const coords = state.footprintCentroids.get(f.feature_id);
+        if (!coords) return null;
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: coords },
+          properties: { weight: f.weight, feature_id: f.feature_id },
+        };
+      })
+      .filter(Boolean),
+  };
+  whenStyleReady(() => map.getSource('exposure-live')?.setData(fc));
 }
 
 function applyReaches(rows) {
@@ -780,12 +878,14 @@ async function refresh() {
     state.lastState = st;
     updateReadout(st.p == null ? 'hindsight' : st.p, st.t, st);
 
-    const [overlay, reaches] = await Promise.all([
+    const [overlay, reaches, exposure] = await Promise.all([
       fetchOverlay(p, t, signal),
       fetchJson(apiUrl(API.reaches, { p, t, precomputed: state.precomputedOnly ? 1 : null }), signal),
+      fetchExposure(p, t, signal),
     ]);
     applyOverlay(overlay);
     applyReaches(reaches);
+    applyExposure(exposure);
 
     const gaugeKey = `${state.runId}|${p === 'hindsight' ? p : floor5(p)}`;
     if (gaugeKey !== state.lastGaugeKey) {
@@ -954,6 +1054,12 @@ async function selectRun(runId) {
       }
     }
 
+    try {
+      applyVulnerability(await fetchJson(apiUrl(API.vulnerability)));
+    } catch {
+      /* Addendum 1 layer is optional: absent for scenarios with no demographic-risk output */
+    }
+
     const fc = await fetchJson(apiUrl(API.network));
     state.networkReaches = fc.features.filter((f) => f.properties && f.properties.kind === 'reach');
     const gaugeFilter = state.gaugeNames.size
@@ -1044,6 +1150,18 @@ function bindControls() {
   document.getElementById('hillshade-toggle')?.addEventListener('change', (e) => {
     state.showHillshade = e.target.checked;
     if (map.getLayer('hillshade')) map.setLayoutProperty('hillshade', 'visibility', state.showHillshade ? 'visible' : 'none');
+  });
+  document.getElementById('vulnerability-toggle')?.addEventListener('change', (e) => {
+    state.showVulnerability = e.target.checked;
+    if (map.getLayer('vulnerability-heat')) {
+      map.setLayoutProperty('vulnerability-heat', 'visibility', state.showVulnerability ? 'visible' : 'none');
+    }
+  });
+  document.getElementById('exposure-toggle')?.addEventListener('change', (e) => {
+    state.showExposure = e.target.checked;
+    if (map.getLayer('exposure-heat')) {
+      map.setLayoutProperty('exposure-heat', 'visibility', state.showExposure ? 'visible' : 'none');
+    }
   });
   for (const btn of document.querySelectorAll('[data-camera]')) {
     btn.addEventListener('click', () => {

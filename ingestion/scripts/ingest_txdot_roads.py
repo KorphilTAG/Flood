@@ -15,9 +15,12 @@ from lib.upsert import upsert_geodataframe
 
 # TxDOT Roadway Inventory (Texas Referenced Marker System) FeatureServer, published
 # on the TxDOT ArcGIS Open Data portal (gis-txdot.opendata.arcgis.com).
+# Renamed upstream from "TxDOT_Roadway_Linear_Referencing_System" at some point after
+# this was first written; verified against the org's /arcgis/rest/services listing
+# (esriGeometryPolyline, OBJECTID field) on 2026-09-06.
 TXDOT_ROADS_FEATURE_SERVER_URL = (
     "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/"
-    "TxDOT_Roadway_Linear_Referencing_System/FeatureServer/0/query"
+    "TxDOT_Roadway_Inventory/FeatureServer/0/query"
 )
 
 SOURCE = "txdot"

@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "documents": [
+    {
+      "document_id": "kerr-hmp-2024",
+      "source_category": "kerr_hmp_2024",
+      "title": "Kerr County Hazard Mitigation Action Plan 2024",
+      "publisher": "",
+      "canonical_url": "",
+      "local_pdf_path": "../../../../data/aar/sources/10-2024-KerrCountyHazardMitigationActionPlan.pdf",
+      "sha256": "e80b40fb0b2e1a56942a02bc95005e694af8811225ed0f1a9b96bfe4029a2963",
+      "status": "pending",
+      "verified_by": "",
+      "verified_at": "",
+      "verification_note": "",
+      "annotations": [],
+      "_draft_notes": {
+        "file": "10-2024-KerrCountyHazardMitigationActionPlan.pdf",
+        "pages": 220,
+        "curator_must_fill": [
+          "publisher",
+          "canonical_url",
+          "verified_by",
+          "verified_at",
+          "verification_note",
+          "status -> verified"
+        ]
+      }
+    },
+    {
+      "document_id": "flood-twin-team-breakdown-2",
+      "source_category": "",
+      "title": "Flood Digital Twin \u2014 Team Work Breakdown Three technical tracks, the tools each one uses, and how it all fits together P",
+      "publisher": "",
+      "canonical_url": "",
+      "local_pdf_path": "../../../../data/aar/sources/Flood_Twin_Team_Breakdown-2.pdf",
+      "sha256": "63fa7db5e4a039fc5d6cf56a329f0ee133ce74fda4f60ce569308beab27d5369",
+      "status": "pending",
+      "verified_by": "",
+      "verified_at": "",
+      "verification_note": "",
+      "annotations": [],
+      "_draft_notes": {
+        "file": "Flood_Twin_Team_Breakdown-2.pdf",
+        "pages": 6,
+        "curator_must_fill": [
+          "publisher",
+          "canonical_url",
+          "verified_by",
+          "verified_at",
+          "verification_note",
+          "status -> verified",
+          "source_category"
+        ]
+      }
+    },
+    {
+      "document_id": "oig-26-017-i-secured",
+      "source_category": "",
+      "title": "",
+      "publisher": "",
+      "canonical_url": "",
+      "local_pdf_path": "../../../../data/aar/sources/OIG-26-017-I (SECURED).pdf",
+      "sha256": "eedaf104ac6c16b2b853495b281cfc438e119b0260f1f0303a30e0c5ebc26e2f",
+      "status": "pending",
+      "verified_by": "",
+      "verified_at": "",
+      "verification_note": "",
+      "annotations": [],
+      "_draft_notes": {
+        "file": "OIG-26-017-I (SECURED).pdf",
+        "pages": 0,
+        "curator_must_fill": [
+          "publisher",
+          "canonical_url",
+          "verified_by",
+          "verified_at",
+          "verification_note",
+          "status -> verified",
+          "source_category"
+        ],
+        "unreadable": "DependencyError: cryptography>=3.1 is required for AES algorithm"
+      }
+    },
+    {
+      "document_id": "tx-house-senate-committee",
+      "source_category": "tx_house_senate_committee",
+      "title": "REPORT ON THE CAMP MYSTIC FLOOD DISASTER OF JULY 4, 2025 JUNE 2026 Senator Pete Flores, Chair Senator Charles Perry, Vic",
+      "publisher": "",
+      "canonical_url": "",
+      "local_pdf_path": "../../../../data/aar/sources/Report-on-the-Camp-Mystic-Flood-Disaster-of-July-4-2025.pdf",
+      "sha256": "e5db46acaa632907af8e41f6ee0ea0729f929136f624b6ef8b3949977d96e028",
+      "status": "pending",
+      "verified_by": "",
+      "verified_at": "",
+      "verification_note": "",
+      "annotations": [],
+      "_draft_notes": {
+        "file": "Report-on-the-Camp-Mystic-Flood-Disaster-of-July-4-2025.pdf",
+        "pages": 115,
+        "curator_must_fill": [
+          "publisher",
+          "canonical_url",
+          "verified_by",
+          "verified_at",
+          "verification_note",
+          "status -> verified"
+        ]
+      }
+    }
+  ]
+}

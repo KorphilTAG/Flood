@@ -1,0 +1,18 @@
+[
+  {
+    "type": "density_point",
+    "feature_id": "structure:osm.way.123456",
+    "weight": 0.2706,
+    "score_source": "vulnerability_x_hazard_v1",
+    "static_vulnerability_weight": 0.41,
+    "hazard_severity_t": 0.66,
+    "citation_ids": [
+      "openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879",
+      "cdc-svi:2022:48265950100",
+      "acs:2019-2023-5yr:48265950100",
+      "osm:way/123456",
+      "impact_extractor:kerr-2025-07-04-replay-a1b2c3:2025-07-04T06:45:00Z"
+    ],
+    "t": "2025-07-04T06:45:00Z"
+  }
+]

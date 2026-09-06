@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from aar.models import IndexError as AarIndexError
 
+from .facts import ImpactFactsError
 from .schemas import CritiqueRequest, CritiqueResponse
 from .service import CritiqueGenerationError, NoHistoricalContextError, run_critique
 from .settings import Settings
@@ -41,6 +42,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(NoHistoricalContextError)
     async def _no_historical_context_handler(request: Request, exc: NoHistoricalContextError) -> JSONResponse:
         return JSONResponse(status_code=422, content=_error_body("no_historical_context", str(exc)))
+
+    @app.exception_handler(ImpactFactsError)
+    async def _impact_facts_handler(request: Request, exc: ImpactFactsError) -> JSONResponse:
+        # A malformed or coordinate-carrying impact document is caller input, not a
+        # service fault: 422, the same class as an ungroundable request.
+        return JSONResponse(status_code=422, content=_error_body("invalid_impact_document", str(exc)))
 
     @app.exception_handler(AarIndexError)
     async def _aar_index_error_handler(request: Request, exc: AarIndexError) -> JSONResponse:

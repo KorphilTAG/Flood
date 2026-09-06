@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flood.local/schemas/exposure-density.schema.json",
+  "title": "Hazard-fused vulnerability density points (PRD Addendum 2)",
+  "description": "One entry per building footprint where the static demographic vulnerability layer (Addendum 1) and this tick's hazard depth (Contract 2 facts) are both present. feature_id is the footprint's Contract 2 feature_ref.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/density_point" },
+  "$defs": {
+    "density_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "feature_id",
+        "weight",
+        "score_source",
+        "static_vulnerability_weight",
+        "hazard_severity_t",
+        "citation_ids",
+        "t"
+      ],
+      "properties": {
+        "type": { "const": "density_point" },
+        "feature_id": { "$ref": "common.schema.json#/$defs/feature_ref" },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "score_source": { "type": "string", "minLength": 1 },
+        "static_vulnerability_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hazard_severity_t": { "type": "number", "minimum": 0, "maximum": 1 },
+        "citation_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "t": { "$ref": "common.schema.json#/$defs/utc_timestamp" }
+      }
+    }
+  }
+}

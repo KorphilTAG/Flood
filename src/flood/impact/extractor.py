@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Protocol
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 import geopandas as gpd
 import numpy as np
@@ -39,6 +39,7 @@ class ExposureStore(Protocol):
         bounds: tuple[float, float, float, float],
         bounds_crs: str,
         target_crs: str,
+        extra_columns: Sequence[str] = (),
     ) -> gpd.GeoDataFrame: ...
 
 
@@ -241,8 +242,9 @@ class ImpactExtractor:
         try:
             crs = str(current_ds.crs)
             bounds = tuple(current_ds.bounds)
+            joins = self._join_columns()
             features = {
-                layer_id: self.store.load(layer, bounds, crs, crs)
+                layer_id: self.store.load(layer, bounds, crs, crs, joins.get(layer_id, ()))
                 for layer_id, layer in self.layers.items()
             }
             # feature_ref -> {t: impacted}, plus the current-raster stats it is reported with.
@@ -289,6 +291,28 @@ class ImpactExtractor:
         }
         validate_json("impact-json", payload)
         return payload
+
+    def _join_columns(self) -> dict[str, tuple[str, ...]]:
+        """Non-attribute columns each layer must carry for a registry egress join.
+
+        A routes layer's `join_field` is not in its attribute allow-list, so unless it
+        is requested explicitly the store never returns it and every site would resolve
+        to `unknown`.
+        """
+        joins: dict[str, tuple[str, ...]] = {}
+        for layer in self.layers.values():
+            if layer.egress is None:
+                continue
+            routes_id = layer.egress.routes_layer
+            if routes_id not in self.layers:
+                raise ExposureConfigError(
+                    f"Exposure layer '{layer.layer_id}' declares egress via unknown "
+                    f"routes_layer '{routes_id}'"
+                )
+            existing = joins.get(routes_id, ())
+            if layer.egress.join_field not in existing:
+                joins[routes_id] = (*existing, layer.egress.join_field)
+        return joins
 
     def _build_facts(
         self,
