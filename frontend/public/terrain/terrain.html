@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flood Terrain View</title>
+  <!-- MapLibre GL JS 5.24.0 -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.css"
+    integrity="sha512-KIMsMWIdnoG9OwZa+oaIafmbDonqck1UCmq+/zcUi2aaZ97N9QE6TqpTM+n36EO40HGh64hU/375zxtjx7WTyQ=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+  <link rel="stylesheet" href="terrain.css" />
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.js"
+    integrity="sha512-hoXlvOdSmh58mppUyZHZsscHkR/yXl6zLpTMTNwA6IZ61DpeaCNjosRu1WJ2DeIpkfW5MsJJ9H89zjV4IBGqRw=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  ></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <header id="topbar">
+    <div class="topbar-left">
+      <span class="app-title">Flood Terrain View</span>
+      <span id="scenario-badge" class="badge">No run</span>
+      <a class="badge link" href="./" title="Back to the 2D verifier">2D verifier</a>
+    </div>
+    <div class="topbar-readout">
+      <div class="readout-item">
+        <span class="readout-label">Mode</span>
+        <span id="readout-mode" class="readout-val">forecast</span>
+      </div>
+      <div class="readout-item">
+        <span class="readout-label">Cutoff p</span>
+        <span id="readout-p" class="readout-val">-</span>
+      </div>
+      <div class="readout-item">
+        <span class="readout-label">Valid t</span>
+        <span id="readout-t" class="readout-val">-</span>
+      </div>
+      <div class="readout-item" id="readout-compute-item">
+        <span class="readout-label">Compute</span>
+        <span id="readout-compute" class="readout-val">-</span>
+      </div>
+      <div id="busy" class="busy hidden"><span class="spinner"></span><span id="busy-text">computing</span></div>
+    </div>
+  </header>
+
+  <div id="error-banner" class="banner hidden" role="alert">
+    <span id="error-message" class="banner-text"></span>
+    <button id="btn-dismiss-error" class="banner-close" aria-label="Dismiss error">&times;</button>
+  </div>
+
+  <aside id="panel">
+    <section class="panel-section">
+      <h2 class="panel-title">Run</h2>
+      <div class="control-row">
+        <label for="run-select">Run</label>
+        <select id="run-select"></select>
+      </div>
+      <div class="control-row">
+        <label>Mode</label>
+        <div class="radio-group" id="mode-group">
+          <label><input type="radio" name="mode" value="nowcast" /> Nowcast</label>
+          <label><input type="radio" name="mode" value="forecast" checked /> Forecast</label>
+          <label><input type="radio" name="mode" value="stale" /> Stale</label>
+          <label><input type="radio" name="mode" value="hindsight" /> Hindsight</label>
+        </div>
+      </div>
+      <div class="control-row" id="horizon-group">
+        <label for="horizon-select">Horizon</label>
+        <select id="horizon-select">
+          <option value="30">30 min</option>
+          <option value="60">60 min</option>
+          <option value="120" selected>120 min</option>
+          <option value="240">240 min</option>
+          <option value="360">360 min</option>
+        </select>
+      </div>
+      <div class="control-row hidden" id="lag-group">
+        <label for="lag-select">Lag</label>
+        <select id="lag-select">
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="60" selected>60 min</option>
+          <option value="120">120 min</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <h2 class="panel-title">Water</h2>
+      <div class="control-row">
+        <label for="band-select">Band</label>
+        <select id="band-select">
+          <option value="depth_mid" selected>depth_mid</option>
+          <option value="depth_low">depth_low</option>
+          <option value="depth_high">depth_high</option>
+          <option value="velocity_ms">velocity_ms</option>
+          <option value="hazard_dv">hazard_dv</option>
+          <option value="prob_inundated">prob_inundated</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="opacity-range">Opacity</label>
+        <input type="range" id="opacity-range" min="0.2" max="1" step="0.05" value="0.85" />
+        <span id="opacity-val" class="range-val">85%</span>
+      </div>
+      <div class="control-row">
+        <label for="res-select">Overlay px</label>
+        <select id="res-select" title="Overlay width in pixels; 6144 is close to the 10 m grid over the corridor">
+          <option value="4096">4096</option>
+          <option value="6144" selected>6144</option>
+          <option value="8192">8192</option>
+        </select>
+      </div>
+      <div class="control-row toggles-row">
+        <label class="checkbox-label"><input type="checkbox" id="reaches-toggle" checked /> Reaches by rate of rise</label>
+        <label class="checkbox-label"><input type="checkbox" id="gauges-toggle" checked /> Gauge readouts</label>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <h2 class="panel-title">Terrain</h2>
+      <div class="control-row">
+        <label for="exaggeration-range">Relief</label>
+        <input type="range" id="exaggeration-range" min="1" max="3" step="0.1" value="1.6" />
+        <span id="exaggeration-val" class="range-val">1.6x</span>
+      </div>
+      <div class="control-row">
+        <label for="basemap-select">Basemap</label>
+        <select id="basemap-select">
+          <option value="dark" selected>Dark</option>
+          <option value="satellite">Satellite</option>
+          <option value="streets">Streets</option>
+        </select>
+      </div>
+      <div class="control-row toggles-row">
+        <label class="checkbox-label"><input type="checkbox" id="hillshade-toggle" checked /> Hillshade</label>
+      </div>
+      <div class="control-row">
+        <label>Camera</label>
+        <div class="button-group">
+          <button class="btn" type="button" data-camera="corridor">Corridor</button>
+          <button class="btn" type="button" data-camera="08165500">Hunt</button>
+          <button class="btn" type="button" data-camera="08166200">Kerrville</button>
+          <button class="btn" type="button" data-camera="08167000">Comfort</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-section" id="legend-section">
+      <h2 class="panel-title" id="legend-title">Depth, mid member</h2>
+      <div id="legend-ramp" class="legend-ramp"></div>
+      <div class="legend-sub">Reach lines: rate of rise (m/h)</div>
+      <div class="legend-ror">
+        <span class="swatch" style="background:#4dd0e1"></span>falling
+        <span class="swatch" style="background:#7fa8cc"></span>steady
+        <span class="swatch" style="background:#ffe082"></span>+0.3
+        <span class="swatch" style="background:#ffab40"></span>+1
+        <span class="swatch" style="background:#ff5252"></span>+3
+      </div>
+      <p class="footnote">
+        Terrain from public 3DEP-derived tiles at about 10 m. Water is the engine depth painted on the terrain, so
+        the flooded extent is exact and the water surface itself is not modelled. HAND limits apply: underprediction
+        on small streams, no debris dams or bridge backwater.
+      </p>
+    </section>
+  </aside>
+
+  <footer id="timeline">
+    <div class="clock-buttons">
+      <button id="btn-play" class="btn btn-primary" type="button">Play</button>
+      <button id="btn-pause" class="btn" type="button">Pause</button>
+      <select id="speed-select" title="Replay speed">
+        <option value="1">1x</option>
+        <option value="10">10x</option>
+        <option value="60" selected>60x</option>
+        <option value="300">300x</option>
+        <option value="900">900x</option>
+      </select>
+    </div>
+    <div class="timeline-track">
+      <input type="range" id="timeline-slider" min="0" max="100" value="0" step="60" />
+      <div class="timeline-labels">
+        <span id="timeline-start">-</span>
+        <span id="timeline-current" class="timeline-active">-</span>
+        <span id="timeline-end">-</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="terrain.js"></script>
+</body>
+</html>
