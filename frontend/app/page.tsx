@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import mock from '@/data/mock.json';
 import scenario from '@/data/scenario.json';
-import OperationalMap from '@/components/operational-map';
+import OperationalMap, { type HuntWater } from '@/components/operational-map';
 import FieldObservationForm, {
   type ObservationDraft,
 } from '@/components/field-observation-form';
@@ -67,6 +67,10 @@ import {
   type Operations,
   type TeamStatus,
 } from '@/lib/operations';
+const feetText = (value: number | null | undefined, digits = 1) =>
+  value == null ? '—' : (value / 0.3048).toFixed(digits);
+const cfsText = (value: number | null | undefined) =>
+  value == null ? '—' : (value / (0.3048 ** 3)).toFixed(1);
 const initialTime = Date.parse(mock.initialTime),
   start = Date.parse(mock.timelineStart),
   end = Date.parse(mock.timelineEnd);
@@ -153,6 +157,7 @@ function download(name: string, content: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export default function Home() {
+  const [huntWater, setHuntWater] = useState<HuntWater | null>(null);
   const [view, setView] = useState('command'),
     [selectedId, setSelectedId] = useState(mock.sectors[0].id),
     [inspector, setInspector] = useState('evidence');
@@ -216,6 +221,18 @@ export default function Home() {
     };
   });
   const selected = sectors.find((s) => s.id === selectedId) ?? sectors[0];
+  const isHunt = selected.id === 'site:demo-c04';
+  // Retain the last completed forecast during forward playback, but never show
+  // a future cutoff after rewinding the simulation.
+  const currentHuntWater = huntWater && Date.parse(huntWater.p) <= p ? huntWater : null;
+  const huntUpdating = isHunt && (!currentHuntWater || p - Date.parse(currentHuntWater.p) >= 300000);
+  const huntTrend = currentHuntWater?.series.filter((point) =>
+    Date.parse(point.t) >= start && Date.parse(point.t) <= end
+  ) ?? [];
+  const huntTrendMin = Math.min(...huntTrend.map((point) => point.wse));
+  const huntTrendMax = Math.max(...huntTrend.map((point) => point.wse));
+  const waterValue = isHunt ? currentHuntWater?.stage : fixtureDepth(selected.depth, t, initialTime, member);
+  const waterTime = isHunt && currentHuntWater ? Date.parse(currentHuntWater.t) : t;
   const selectedFeatures = liveMap.features.filter(
     (f) => f.sectorId === selectedId,
   );
@@ -372,7 +389,7 @@ export default function Home() {
   }
   function exportLog() {
     download(
-      'flood-simulation-decision-log.json',
+      'lifeline-simulation-decision-log.json',
       JSON.stringify(
         {
           label: 'UI MOCK — NOT AN OPERATIONAL RECORD',
@@ -403,7 +420,7 @@ export default function Home() {
             <span className="wordmark-icon">
               <Activity size={20} />
             </span>
-            <strong>FLOOD</strong>
+            <strong>LifeLine</strong>
             <span>DECISION SUPPORT</span>
           </div>
           <TabsList className="main-navigation" aria-label="Workspace">
@@ -432,21 +449,8 @@ export default function Home() {
         <TabsContent value="command" className="command-view">
           <div className="command-grid">
             <div className="map-workspace">
-              <div className="map-incident">
-                <div>
-                  <span className="overline">
-                    INCIDENT COMMAND / {mock.areaLabel}
-                  </span>
-                  <h1>{mock.incidentName}</h1>
-                </div>
-                <span>
-                  <Signal size={14} />
-                  {operations.offline
-                    ? 'Offline simulation'
-                    : 'Exercise channel active'}
-                </span>
-              </div>
               <OperationalMap
+                onWater={setHuntWater}
                 selected={selectedId}
                 onSelect={selectArea}
                 onHover={setHoveredArea}
@@ -458,12 +462,15 @@ export default function Home() {
               />
             </div>
             <aside className="priority-panel" aria-label="Priority areas">
-              <div className="panel-title">
-                <h2>Priority areas</h2>
+              <details className="priority-disclosure" open>
+              <summary className="panel-title">
+                <span className="priority-heading">Priority areas</span>
                 <span>
                   {filtered.length} / {mock.sectors.length}
                 </span>
-              </div>
+                <ChevronRight className="priority-chevron" size={18} aria-hidden="true" />
+              </summary>
+              <div className="priority-content">
               <div className="queue-controls">
                 <label className="sr-only" htmlFor="area-search">
                   Find area or sector
@@ -552,8 +559,8 @@ export default function Home() {
                   </strong>
                 </div>
                 <div>
-                  <span>Water depth · {time(t)}</span>
-                  <strong>{depth.toFixed(1)} m</strong>
+                  <span>{isHunt ? 'Water stage' : 'Water depth'} · {time(waterTime)}</span>
+                  <strong>{feetText(waterValue)} ft</strong>
                 </div>
                 <div className="coverage-summary" aria-live="polite">
                   <div>
@@ -583,7 +590,6 @@ export default function Home() {
                 </div>
               </div>
               <div className="side-tools">
-                <span className="overline">SELECTED · {selected.code}</span>
                 <p className="workflow-summary">
                   Review observations and access, check a plan, then assign a
                   team.
@@ -605,6 +611,8 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              </div>
+              </details>
             </aside>
           </div>
           <footer className="time-panel">
@@ -645,9 +653,18 @@ export default function Home() {
               </span>
             </div>
             <div className="timeline-water">
-              <span>{selected.code} · modeled water-depth trend</span>
+              <span title={isHunt && currentHuntWater ? `Forecast issued ${time(Date.parse(currentHuntWater.p))} CDT` : undefined}>{selected.code} · {isHunt ? `water elevation · NAVD88${huntUpdating ? ' · updating' : ''}` : 'modeled water-depth trend'}</span>
               <div className="water-trend">
-                {Array.from({ length: 37 }, (_, i) => {
+                {isHunt ? huntTrend.map((point) => (
+                  <i
+                    key={point.t}
+                    title={`${time(Date.parse(point.t))} · ${feetText(point.wse, 2)} ft NAVD88`}
+                    style={{
+                      height: `${4 + 22 * (point.wse - huntTrendMin) / Math.max(huntTrendMax - huntTrendMin, 0.01)}px`,
+                      opacity: Date.parse(point.t) <= clock ? 1 : 0.4,
+                    }}
+                  />
+                )) : Array.from({ length: 37 }, (_, i) => {
                   const value = fixtureDepth(
                     selected.depth,
                     start + i * 600000,
@@ -657,7 +674,7 @@ export default function Home() {
                   return (
                     <i
                       key={i}
-                      title={`${time(start + i * 600000)} · ${value.toFixed(1)} m`}
+                      title={`${time(start + i * 600000)} · ${feetText(value)} ft`}
                       style={{
                         height: `${4 + value * 9}px`,
                         opacity: start + i * 600000 <= clock ? 1 : 0.4,
@@ -667,17 +684,15 @@ export default function Home() {
                 })}
               </div>
               <span>
-                {fixtureDepth(
+                {feetText(isHunt ? huntTrend[0]?.wse : fixtureDepth(
                   selected.depth,
                   start,
                   initialTime,
                   member,
-                ).toFixed(1)}{' '}
+                ))}{' '}
                 →{' '}
-                {fixtureDepth(selected.depth, end, initialTime, member).toFixed(
-                  1,
-                )}{' '}
-                m
+                {feetText(isHunt ? huntTrend.at(-1)?.wse : fixtureDepth(selected.depth, end, initialTime, member))}{' '}
+                ft
               </span>
             </div>
             <div className="timeline-track">
@@ -734,7 +749,7 @@ export default function Home() {
               style={{ zoom: Number(phoneZoom) / 100 }}
             >
               <div className="phone-status">
-                <strong>FLOOD / FIELD</strong>
+                <strong>LifeLine / FIELD</strong>
                 <span>{time(clock)} CDT · Exercise</span>
               </div>
               <div
@@ -1105,6 +1120,7 @@ export default function Home() {
                     </button>
                   </header>
                   <OperationalMap
+                    onWater={setHuntWater}
                     selected={fieldMapArea}
                     onSelect={setFieldMapArea}
                     features={liveMap.features}
@@ -1307,12 +1323,12 @@ export default function Home() {
                 </small>
               </div>
               <div>
-                <span>Depth estimate</span>
+                <span>{isHunt ? 'Modeled water stage' : 'Depth estimate'}</span>
                 <strong>
-                  {depth.toFixed(1)} <em>m</em>
+                  {feetText(waterValue)} <em>ft</em>
                 </strong>
-                <small>
-                  {time(t)} · {member} scenario
+                <small title={isHunt ? `Hunt gauge 08165500; reach stage, not ground-level depth. Discharge ${cfsText(currentHuntWater?.discharge)} cfs; rise ${feetText(currentHuntWater?.rise, 2)} ft/h.` : undefined}>
+                  {time(waterTime)} · {isHunt ? 'Hunt forecast' : `${member} scenario`}
                 </small>
               </div>
             </div>

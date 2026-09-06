@@ -143,7 +143,8 @@ small {
 }
 .wordmark strong {
   font-size: 17px;
-  letter-spacing: 1.6px;
+  letter-spacing: 0.2px;
+  flex-shrink: 0;
 }
 .wordmark > span:last-child {
   font-size: 12px;
@@ -2394,7 +2395,8 @@ textarea {
   color: var(--muted-text);
 }
 .phone-status strong {
-  letter-spacing: 1px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
   color: var(--foreground);
 }
 .phone-screen {
@@ -4245,4 +4247,87 @@ textarea,
 .phone-report-body .facts-list dt,
 .phone-report-body .facts-list dd {
   color: #d6e5f2;
+}
+
+/* Command map fills the workspace; controls float above its surface. */
+.command-view .command-grid {
+  position: relative;
+  display: block;
+  margin: 0 14px;
+  width: calc(100% - 28px);
+  overflow: hidden;
+}
+.command-view .map-workspace {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  height: 100%;
+}
+.command-view .map-module {
+  position: relative;
+  display: block;
+  height: 100%;
+}
+.command-view .map-module .map-panel {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  height: 100%;
+}
+.command-view .map-layer-controls {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  bottom: 38px;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  border: 1px solid #49627b;
+  border-radius: 10px;
+  background: rgba(8, 14, 24, 0.72);
+  backdrop-filter: blur(8px);
+}
+.command-view .map-layer-controls label { color: #f4f9ff; }
+.command-view .priority-panel {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  right: 64px;
+  width: clamp(300px, 25vw, 380px);
+  max-width: calc(100% - 88px);
+  height: auto;
+  min-height: 0;
+  max-height: calc(100% - 110px);
+  margin: 0;
+  background: rgba(8, 14, 24, 0.78);
+  overflow: auto;
+}
+.priority-disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+  color: #f4f9ff;
+  gap: 12px;
+  min-height: 44px;
+}
+.priority-disclosure > summary::-webkit-details-marker { display: none; }
+.priority-disclosure > summary:focus-visible {
+  outline: 2px solid #9bdcff;
+  outline-offset: -3px;
+}
+.priority-heading { margin-right: auto; font-size: 15px; font-weight: 600; }
+.priority-chevron { flex-shrink: 0; }
+.priority-disclosure[open] .priority-chevron { transform: rotate(90deg); }
+.priority-content { display: flex; flex-direction: column; }
+.command-view .priority-panel .priority-list { flex: none; overflow: visible; }
+.command-view .priority-panel .area-row { flex: none; min-height: 64px; }
+.command-view .priority-panel .selected-map-summary { flex: none; }
+.command-view .time-panel { margin-top: 0; }
+@media (max-width: 760px) {
+  .command-view .command-grid { margin-inline: 8px; width: calc(100% - 16px); }
+  .command-view .priority-panel { top: 68px; max-height: calc(100% - 190px); }
+  .command-view .map-layer-controls { gap: 8px 10px; }
+  .command-view .map-layer-controls label { font-size: 12px; }
 }

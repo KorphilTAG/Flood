@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 
+export type HuntWater = {
+  run: string; p: string; t: string;
+  stage: number; discharge: number; rise: number;
+  series: { t: string; wse: number }[];
+};
+
 type Props = {
   selected: string;
   features: unknown[];
@@ -13,6 +19,7 @@ type Props = {
   focus: number;
   fieldCopy?: boolean;
   onHover?: (id: string | null) => void;
+  onWater?: (data: HuntWater | null) => void;
 };
 
 const layerLabels = {
@@ -21,7 +28,7 @@ const layerLabels = {
 };
 
 /** MapLibre terrain from feature/terrain-view inside the Command and Field shell. */
-export default function OperationalMap({ selected, features, target, onSelect, fieldCopy = false, onHover }: Props) {
+export default function OperationalMap({ selected, features, target, onSelect, fieldCopy = false, onHover, onWater }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [layers, setLayers] = useState({
     flood: true, sectors: true, teams: !fieldCopy, hazards: true,
@@ -34,19 +41,20 @@ export default function OperationalMap({ selected, features, target, onSelect, f
   useEffect(() => { send('incident-data', { features, selected, at: target }); }, [features, selected, target]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || !event.data) return;
+      if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow || !event.data) return;
       if (event.data.type === 'incident-select' && typeof event.data.id === 'string') onSelect(event.data.id);
       if (event.data.type === 'incident-hover') onHover?.(event.data.id ?? null);
+      if (event.data.type === 'hunt-water') onWater?.(event.data.water ?? null);
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [onHover, onSelect]);
+  }, [onHover, onSelect, onWater]);
 
   return (
     <section className={`map-module ${fieldCopy ? 'field-map-copy' : ''}`} aria-label={fieldCopy ? 'Latest field area map' : 'Texas operational map'}>
-      <div className="map-toolbar">
+      {fieldCopy && <div className="map-toolbar">
         <span className="river-source-key"><i aria-hidden="true" /> Guadalupe River · 3D terrain and flood overlay</span>
-      </div>
+      </div>}
       <fieldset className="map-layer-controls" aria-label="Visible map layers">
         {(Object.keys(layers) as (keyof typeof layers)[]).map((key) => (
           <label key={key}>
@@ -56,9 +64,9 @@ export default function OperationalMap({ selected, features, target, onSelect, f
         ))}
       </fieldset>
       <div className="map-panel terrain-frame-wrap">
-        <iframe ref={frame} className="terrain-frame" src="/terrain/terrain.html" title="Interactive 3D flood terrain" onLoad={() => { send('incident-layers', { layers, selected }); send('incident-data', { features, selected, at: target }); }} />
+        <iframe ref={frame} className="terrain-frame" src="/terrain/terrain.html" title="Interactive 3D flood terrain" onLoad={() => { send('incident-layers', { layers, selected, focus: fieldCopy }); send('incident-data', { features, selected, at: target }); }} />
       </div>
-      <div className="map-caption"><span>Public 3DEP terrain · engine depth overlay · simulated operational annotations</span></div>
+      {fieldCopy && <div className="map-caption"><span>Public 3DEP terrain · engine depth overlay · simulated operational annotations</span></div>}
     </section>
   );
 }

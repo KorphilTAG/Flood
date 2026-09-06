@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import './globals.css';
 export const metadata: Metadata = {
-  title: 'Flood · Command',
+  title: 'LifeLine · Command',
   description:
-    'Flood decision-support interface prototype. All operational data is simulated.',
+    'LifeLine decision-support interface prototype. All operational data is simulated.',
 };
 export default function RootLayout({
   children,

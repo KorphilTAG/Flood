@@ -53,11 +53,11 @@ const RAMP = [
   { v: 4.0, c: '#052a66' },
 ];
 const BAND_UNITS = {
-  depth_mid: 'm',
-  depth_low: 'm',
-  depth_high: 'm',
-  velocity_ms: 'm/s',
-  hazard_dv: 'm2/s',
+  depth_mid: 'ft',
+  depth_low: 'ft',
+  depth_high: 'ft',
+  velocity_ms: 'ft/s',
+  hazard_dv: 'ft²/s',
   prob_inundated: 'fraction',
 };
 const BAND_TITLES = {
@@ -86,7 +86,7 @@ export const state = {
   tz: 'UTC',
   gaugeNames: new Map(), // site -> name from the scenario file
 
-  mode: 'forecast', // nowcast | forecast | stale | hindsight
+  mode: 'forecast', // Fixed forecast mode in the demo.
   horizonMin: 120,
   lagMin: 60,
 
@@ -139,7 +139,9 @@ const incidentLayerIds = {
 };
 const incidentAreas = new Map();
 let incidentSelection = null;
+let pendingIncidentFocus = null;
 let pendingIncidentFeatures = null;
+const embedded = window.parent !== window;
 
 function setIncidentLayers(layers = {}, selected) {
   incidentSelection = selected || incidentSelection;
@@ -209,19 +211,33 @@ async function addIncidentLayers() {
     map.on('mouseleave', 'incident-areas-fill', () => { map.getCanvas().style.cursor = ''; window.parent.postMessage({ type: 'incident-hover', id: null }, window.location.origin); });
     setIncidentLayers({}, incidentSelection);
     if (pendingIncidentFeatures) updateIncidentFeatures(pendingIncidentFeatures);
-    if (incidentSelection) focusIncidentArea(incidentSelection);
+    if (pendingIncidentFocus) {
+      focusIncidentArea(pendingIncidentFocus);
+      pendingIncidentFocus = null;
+    }
   } catch (err) { console.warn(err); }
 }
 
 window.addEventListener('message', (event) => {
-  if (event.origin !== window.location.origin || !event.data) return;
+  if (event.origin !== window.location.origin || event.source !== window.parent || !event.data) return;
   if (event.data.type === 'incident-layers') {
+    const shouldFocus = event.data.focus === true ||
+      (incidentSelection && event.data.selected && event.data.selected !== incidentSelection);
     setIncidentLayers(event.data.layers, event.data.selected);
-    if (event.data.selected) focusIncidentArea(event.data.selected);
+    if (shouldFocus) {
+      if (incidentAreas.has(event.data.selected)) focusIncidentArea(event.data.selected);
+      else pendingIncidentFocus = event.data.selected;
+    }
   }
   if (event.data.type === 'incident-data') {
     updateIncidentFeatures(event.data.features);
-    if (event.data.selected) focusIncidentArea(event.data.selected);
+    if (typeof event.data.at === 'number' && Number.isFinite(event.data.at)) {
+      const at = formatIsoUtc(event.data.at);
+      if (at && at !== state.t) {
+        state.t = at;
+        if (bucketKey() !== state.lastKey) scheduleRefresh();
+      }
+    }
   }
   if (event.data.type === 'terrain-camera' && event.data.camera === 'corridor') fitCorridor();
 });
@@ -290,6 +306,8 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+const feet = (v) => v == null ? null : Number(v) / 0.3048;
+const cfs = (v) => v == null ? null : Number(v) / (0.3048 ** 3);
 const fmt = (v, digits = 1) => (v == null || Number.isNaN(Number(v)) ? '-' : Number(v).toFixed(digits));
 
 // ---------------------------------------------------------------------------
@@ -402,7 +420,8 @@ function buildLegend() {
   const unit = BAND_UNITS[state.band] || '';
   ramp.innerHTML = RAMP.map((s, i) => {
     const next = RAMP[i + 1];
-    const label = next ? `${s.v} to ${next.v} ${unit}` : `${s.v}+ ${unit}`;
+    const display = (v) => fmt(state.band === 'prob_inundated' ? v : state.band === 'hazard_dv' ? v / (0.3048 ** 2) : feet(v), 2);
+    const label = next ? `${display(s.v)} to ${display(next.v)} ${unit}` : `${display(s.v)}+ ${unit}`;
     return `<div class="legend-stop"><span class="swatch" style="background:${s.c}"></span><span>${escapeHtml(label)}</span></div>`;
   }).join('');
 }
@@ -540,20 +559,29 @@ function initMap() {
     style: buildStyle(),
     center: [-99.15, 30.03],
     zoom: 10.4,
-    pitch: 60,
-    bearing: -15,
+    pitch: 0,
+    bearing: 0,
     maxPitch: 80,
     // The terrain tiles stop at zoom 15 and draped layers stop rendering past the terrain
     // source's maxzoom; 15 already shows a 10 m grid cell at several screen pixels.
     maxZoom: 15,
     attributionControl: { compact: true },
   });
+  // Start the map information closed; its info button can still expand it.
+  const attribution = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+  if (attribution) {
+    // Sources load later; mark compact now so their first attribution update
+    // does not initialize the control in its expanded state.
+    attribution.classList.add('maplibregl-compact');
+    attribution.removeAttribute('open');
+    attribution.classList.remove('maplibregl-compact-show');
+  }
   // A camera move by hand before the first overlay arrives cancels the automatic corridor fit.
   map.on('movestart', (e) => {
     if (e && e.originalEvent) userMoved = true;
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
   map.once('style.load', () => {
     styleReady = true;
     for (const fn of pendingMapOps.splice(0)) fn();
@@ -708,7 +736,7 @@ function updateGaugeChips() {
     }
     const pred = row.predicted_q_mid_cms;
     const obs = row.observed_q_cms;
-    vals.textContent = `Q ${fmt(pred, 0)} cms${obs != null ? ` (obs ${fmt(obs, 0)})` : ''}`;
+    vals.textContent = `Q ${fmt(cfs(pred), 0)} cfs${obs != null ? ` (obs ${fmt(cfs(obs), 0)})` : ''}`;
     if (row.is_forecast) g.el.classList.add('forecast');
     const rr = state.reachRows.get(Number(row.feature_id));
     if (rr && rr.rate_of_rise_m_per_h > 0.3) g.el.classList.add('rising');
@@ -731,14 +759,14 @@ function showGaugePopup(site, lngLat) {
     body = `
       <div class="popup-grid">
         <span class="k">valid t</span><span>${escapeHtml(formatDateTime(row.t, tz, true))}${row.is_forecast ? ' (forecast)' : ''}</span>
-        <span class="k">Q predicted</span><span>${fmt(row.predicted_q_mid_cms, 0)} cms (${fmt(row.predicted_q_low_cms, 0)} to ${fmt(row.predicted_q_high_cms, 0)})</span>
-        <span class="k">Q observed</span><span>${row.observed_q_cms != null ? `${fmt(row.observed_q_cms, 0)} cms` : '-'}</span>
-        <span class="k">WSE predicted</span><span>${fmt(row.predicted_wse_mid_m, 2)} m ${escapeHtml(row.wse_datum || '')}</span>
-        <span class="k">WSE observed</span><span>${row.observed_wse_m != null ? `${fmt(row.observed_wse_m, 2)} m` : '-'}</span>
+        <span class="k">Q predicted</span><span>${fmt(cfs(row.predicted_q_mid_cms), 0)} cfs (${fmt(cfs(row.predicted_q_low_cms), 0)} to ${fmt(cfs(row.predicted_q_high_cms), 0)})</span>
+        <span class="k">Q observed</span><span>${row.observed_q_cms != null ? `${fmt(cfs(row.observed_q_cms), 0)} cfs` : '-'}</span>
+        <span class="k">WSE predicted</span><span>${fmt(feet(row.predicted_wse_mid_m), 2)} ft ${escapeHtml(row.wse_datum || '')}</span>
+        <span class="k">WSE observed</span><span>${row.observed_wse_m != null ? `${fmt(feet(row.observed_wse_m), 2)} ft` : '-'}</span>
       </div>`;
     const rr = state.reachRows.get(Number(row.feature_id));
     if (rr) {
-      body += `<div class="popup-note">Reach ${rr.feature_id}: stage ${fmt(rr.stage_mid_m, 2)} m, rate of rise ${fmt(rr.rate_of_rise_m_per_h, 2)} m/h, source ${escapeHtml(rr.source)}</div>`;
+      body += `<div class="popup-note">Reach ${rr.feature_id}: stage ${fmt(feet(rr.stage_mid_m), 2)} ft, rate of rise ${fmt(feet(rr.rate_of_rise_m_per_h), 2)} ft/h, source ${escapeHtml(rr.source)}</div>`;
     }
   }
   openPopup(lngLat, `<div class="popup-title">${escapeHtml(name)}</div><div class="popup-note">USGS ${escapeHtml(site)}</div>${body}`);
@@ -756,17 +784,17 @@ function showReachPopup(feature, lngLat) {
     body = `
       <div class="popup-grid">
         <span class="k">valid t</span><span>${escapeHtml(formatDateTime(r.t, tz, true))}${r.is_forecast ? ' (forecast)' : ''}</span>
-        <span class="k">Q mid</span><span>${fmt(r.q_mid_cms, 0)} cms (${fmt(r.q_low_cms, 0)} to ${fmt(r.q_high_cms, 0)})</span>
-        <span class="k">stage mid</span><span>${fmt(r.stage_mid_m, 2)} m (${fmt(r.stage_low_m, 2)} to ${fmt(r.stage_high_m, 2)})</span>
-        <span class="k">rate of rise</span><span>${fmt(r.rate_of_rise_m_per_h, 2)} m/h</span>
-        <span class="k">velocity</span><span>${fmt(r.velocity_ms, 2)} m/s</span>
+        <span class="k">Q mid</span><span>${fmt(cfs(r.q_mid_cms), 0)} cfs (${fmt(cfs(r.q_low_cms), 0)} to ${fmt(cfs(r.q_high_cms), 0)})</span>
+        <span class="k">stage mid</span><span>${fmt(feet(r.stage_mid_m), 2)} ft (${fmt(feet(r.stage_low_m), 2)} to ${fmt(feet(r.stage_high_m), 2)})</span>
+        <span class="k">rate of rise</span><span>${fmt(feet(r.rate_of_rise_m_per_h), 2)} ft/h</span>
+        <span class="k">velocity</span><span>${fmt(feet(r.velocity_ms), 2)} ft/s</span>
         <span class="k">source</span><span>${escapeHtml(r.source)}${r.clipped_to_src ? ', clipped to rating curve' : ''}</span>
       </div>`;
   }
   const gauge = p.gauge_site ? ` &middot; gauge ${escapeHtml(p.gauge_site)}` : '';
   openPopup(
     lngLat,
-    `<div class="popup-title">Reach ${fid}</div><div class="popup-note">order ${escapeHtml(p.stream_order)}, levelpath ${escapeHtml(p.levelpath_id)}, ${fmt(Number(p.length_m) / 1000, 1)} km${gauge}</div>${body}`,
+    `<div class="popup-title">Reach ${fid}</div><div class="popup-note">order ${escapeHtml(p.stream_order)}, levelpath ${escapeHtml(p.levelpath_id)}, ${fmt(feet(p.length_m), 0)} ft${gauge}</div>${body}`,
   );
 }
 
@@ -800,7 +828,7 @@ function reachCoords() {
 }
 
 function fitCorridor() {
-  const bbox = coordsBbox(state.overlayCoords || reachCoords());
+  const bbox = coordsBbox([...reachCoords(), ...(state.overlayCoords || [])]);
   if (!bbox) return;
   const el = map.getContainer();
   const w = el.clientWidth;
@@ -813,10 +841,10 @@ function fitCorridor() {
   const padding = {
     top: Math.min(70, Math.round(h * 0.15)),
     bottom: Math.min(100, Math.round(h * 0.2)),
-    left: Math.min(330, Math.round(w * 0.4)),
-    right: Math.min(40, Math.round(w * 0.05)),
+    left: Math.min(60, Math.round(w * 0.08)),
+    right: Math.min(60, Math.round(w * 0.08)),
   };
-  map.fitBounds(bbox, { padding, pitch: 58, bearing: -12, duration: 1400 });
+  map.fitBounds(bbox, { padding, pitch: 0, bearing: 0, duration: 1400 });
 }
 
 function flyToSite(site) {
@@ -863,6 +891,7 @@ async function refresh() {
   controller = new AbortController();
   const { signal } = controller;
   const { p, t } = deriveCutoffAndValid(state.t, state.mode, state.horizonMin, state.lagMin);
+  const requestedRun = state.runId;
   state.lastKey = key;
   updateReadout(p, t, null);
   setBusy(true, state.lastState ? 'computing' : 'routing the record (up to a minute)');
@@ -885,6 +914,17 @@ async function refresh() {
       state.lastGaugeKey = gaugeKey;
     }
     updateGaugeChips();
+    const hunt = reaches.find((row) => Number(row.feature_id) === 3586192);
+    if (hunt && requestedRun === state.runId && Date.parse(p) <= Date.parse(state.t)) {
+      window.parent.postMessage({ type: 'hunt-water', water: {
+        run: state.runId, p, t: hunt.t,
+        stage: hunt.stage_mid_m, discharge: hunt.q_mid_cms,
+        rise: hunt.rate_of_rise_m_per_h,
+        series: (state.gaugeSeries.get('08165500') || [])
+          .filter(({ row }) => Number.isFinite(row.predicted_wse_mid_m))
+          .map(({ row }) => ({ t: row.t, wse: row.predicted_wse_mid_m })),
+      } }, window.location.origin);
+    }
 
     if (!fitted) {
       fitted = true;
@@ -947,6 +987,8 @@ function connectClock() {
 }
 
 function handleClock(msg) {
+  // Embedded maps use the Command/Field timeline, never the API's replay clock.
+  if (embedded) return;
   if (!msg || !msg.t) return;
   state.clock = msg;
   state.t = msg.t;
@@ -1009,17 +1051,22 @@ async function loadRuns() {
     }
   }
   if (!runs.length) {
+    if (sel) sel.add(new Option('No runs available', ''));
     showError('No runs found. Create one with the flood CLI or POST /runs, then reload.');
     return;
   }
   const wanted = new URLSearchParams(window.location.search).get('run');
   const chosen = runs.find((r) => r.run_id === wanted) ? wanted : runs[0].run_id;
-  if (sel) sel.value = chosen;
+  if (sel) {
+    sel.value = chosen;
+    sel.disabled = false;
+  }
   await selectRun(chosen);
 }
 
 async function selectRun(runId) {
   abortInFlight();
+  window.parent.postMessage({ type: 'hunt-water', water: null }, window.location.origin);
   state.runId = runId;
   state.lastKey = null;
   state.lastGaugeKey = null;
@@ -1075,13 +1122,6 @@ function bindControls() {
 
   document.getElementById('run-select')?.addEventListener('change', (e) => selectRun(e.target.value));
 
-  document.getElementById('mode-group')?.addEventListener('change', (e) => {
-    if (e.target.name !== 'mode') return;
-    state.mode = e.target.value;
-    document.getElementById('horizon-group')?.classList.toggle('hidden', state.mode !== 'forecast');
-    document.getElementById('lag-group')?.classList.toggle('hidden', state.mode !== 'stale');
-    forceRefresh();
-  });
   document.getElementById('horizon-select')?.addEventListener('change', (e) => {
     state.horizonMin = Number(e.target.value);
     forceRefresh();
@@ -1099,11 +1139,6 @@ function bindControls() {
   document.getElementById('res-select')?.addEventListener('change', (e) => {
     state.maxPx = Number(e.target.value);
     forceRefresh();
-  });
-  document.getElementById('opacity-range')?.addEventListener('input', (e) => {
-    state.opacity = Number(e.target.value);
-    document.getElementById('opacity-val').textContent = `${Math.round(state.opacity * 100)}%`;
-    if (map.getLayer('depth')) map.setPaintProperty('depth', 'raster-opacity', state.opacity);
   });
   document.getElementById('reaches-toggle')?.addEventListener('change', (e) => {
     state.showReaches = e.target.checked;
