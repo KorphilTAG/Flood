@@ -169,6 +169,106 @@ This corpus accepts only source documents. Product-generated AARs are
 prohibited and must remain in a separate collection so retrieval cannot cite
 its own generated output.
 
+## Historical critic API (`ingestion/critic/`)
+
+`critic` is a standalone FastAPI service, run from `ingestion/` the same way
+`aar` is, that takes a trainee's proposed plan, retrieves grounded historical
+context in-process from the `aar` corpus (a direct `aar.search.search_index`
+Python call, never a subprocess), and calls the OpenAI API through LangChain
+to return structured, cited objections and alternatives for a human
+commander to weigh. It is a critic, not a dispatcher: it never returns an
+operational order.
+
+**Prerequisite:** an AAR corpus must already be built with `python -m aar
+build` (see above) at the path this service reads. This service only reads
+an existing corpus; it never builds, validates, or modifies one.
+
+### Run
+
+```bash
+cd ingestion
+# AAR_INDEX_DIR default is `data/aar/library` (relative to ingestion/); the
+# `aar build` examples above write to `../data/aar/library` instead, so set
+# this explicitly to match wherever your corpus actually lives:
+export AAR_INDEX_DIR=../data/aar/library
+export OPENAI_API_KEY=sk-...   # only required once a real request is made
+uvicorn critic.app:app --reload --port 8001
+```
+
+The app (`create_app()` in `critic/app.py`) starts and `GET /healthz` (liveness
+only) responds without a real `OPENAI_API_KEY` or a built corpus present;
+both are only needed once a real, non-faked `POST /v1/critique` request is
+made.
+
+### Environment variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `AAR_INDEX_DIR` | no | `data/aar/library` | Path to a corpus already produced by `python -m aar build` |
+| `OPENAI_API_KEY` | at request time only | none | Read directly by `langchain_openai.ChatOpenAI`; a missing key fails clearly when a real (non-faked) critique request is made, not at process start |
+| `CRITIC_OPENAI_MODEL` | no | `gpt-4o-mini` | OpenAI chat model used for generation (adjust for latency/cost before a live demo) |
+| `CRITIC_REQUEST_TIMEOUT` | no | `30` | Seconds before the OpenAI/LangChain call times out |
+| `CRITIC_DEFAULT_TOP_K` | no | `5` | Default number of AAR chunks retrieved per request when a request omits `top_k` |
+
+### `POST /v1/critique`
+
+Request body:
+
+```json
+{
+  "plan": "Shelter in place near the river crossing.",
+  "situation": "Rising water, optional free text from a training-mode decision point",
+  "decision_point": "optional label, echoed back",
+  "hazard": "flood",
+  "phase": "response",
+  "top_k": 5
+}
+```
+
+Only `plan` is required (non-empty, non-whitespace; a missing/blank `plan`
+returns `422` before any retrieval or LLM call). `situation`,
+`decision_point`, `hazard`, `phase`, and `top_k` are all optional; `hazard`
+and `phase` are passed straight through as `aar.search.search_index` filters.
+
+Response body:
+
+```json
+{
+  "objections": [{"text": "...", "chunk_ids": ["<real chunk_id>"]}],
+  "alternatives": [{"text": "...", "chunk_ids": ["<real chunk_id>"]}],
+  "citations": [{"chunk_id": "...", "score": 0.83, "excerpt": "...", "citation": {"...": "..."}, "hazard": "...", "phase": "...", "tactic": "...", "resources": "...", "outcome": "...", "lesson": "..."}],
+  "decision_point": "optional label, echoed back",
+  "model": "gpt-4o-mini"
+}
+```
+
+`objections` and `alternatives` may both be empty (a plan can align with the
+historical record), but any item present always cites at least one real
+`chunk_id` drawn from `citations` -- the per-request structured-output schema
+constrains the model to exactly the chunk IDs retrieved for that request, so
+an invented ID cannot be represented at all, never mind returned.
+
+Error responses are `{"error": {"code": str, "message": str}}`:
+
+| Condition | Status |
+|---|---|
+| Missing/empty/whitespace-only `plan` | `422` |
+| Retrieval found no matching historical context | `422` |
+| `aar.search` corpus/index failure (missing/incompatible corpus, missing embedder dependency) | `503` |
+| OpenAI/LangChain call failed or its structured output failed validation | `502` |
+| Anything else unhandled | `500` |
+
+### Tests
+
+```bash
+cd ingestion
+pytest tests/test_critic_service.py tests/test_critic_api.py
+```
+
+Both files fake/monkeypatch `aar.search.search_index` and the LLM generator
+call -- no real `OPENAI_API_KEY`, no network access, and no real built FAISS
+corpus is required.
+
 ## Manual follow-up (not performed by this feature)
 
 These items are genuinely manual per PRD 6.1. No script in this directory
