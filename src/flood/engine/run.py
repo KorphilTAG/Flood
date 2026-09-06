@@ -240,93 +240,19 @@ class Run:
                 mode="hindsight", p=None, t=t_best, p_internal=res.p_internal,
                 horizon_minutes=0, requested=res.requested,
             )
-        best: tuple[tuple[float, float], datetime, datetime] | None = None
+        # Prefer a prewarmed pair with the requested horizon (so a +30 request is not
+        # quietly answered with +60), then the closest target time, then the most recent cutoff.
+        want_h = float(res.horizon_minutes)
+        best: tuple[tuple[float, float, float], datetime, datetime] | None = None
         for p_c, ts in forward.items():
             back = (res.p - p_c).total_seconds() / 60.0
             if back < 0 or back > max_back_minutes:
                 continue
-            t_c = min(ts, key=lambda x: abs((x - res.t).total_seconds()))
-            score = (abs((t_c - res.t).total_seconds()), back)
-            if best is None or score < best[0]:
-                best = (score, p_c, t_c)
-        if best is None:
-            return None
-        _, p_c, t_c = best
-        horizon = int(round((t_c - p_c).total_seconds() / 60.0))
-        return ResolvedQuery(
-            mode="nowcast" if horizon == 0 else "forecast", p=p_c, t=t_c, p_internal=p_c,
-            horizon_minutes=horizon, requested=res.requested,
-        )
-
-    def precomputed_index(self) -> tuple[dict[datetime, list[datetime]], list[datetime]]:
-        """Cutoffs and target times that have a depth raster on disk, plus hindsight targets.
-
-        Rescanned at most every five seconds so a playing clock does not hammer the disk.
-        """
-        now = time.monotonic()
-        if self._precomputed_index is not None and now - self._precomputed_index_at < 5.0:
-            return self._precomputed_index
-        forward: dict[datetime, list[datetime]] = {}
-        products = self.run_dir / "products"
-        if products.is_dir():
-            for p_dir in products.iterdir():
-                if not (p_dir.is_dir() and p_dir.name.startswith("p=")):
-                    continue
-                try:
-                    p_dt = _parse_compact(p_dir.name[2:])
-                except ValueError:
-                    continue
-                ts = []
-                for t_dir in p_dir.iterdir():
-                    if t_dir.is_dir() and t_dir.name.startswith("t=") and (t_dir / "depth.tif").exists():
-                        try:
-                            ts.append(_parse_compact(t_dir.name[2:]))
-                        except ValueError:
-                            pass
-                if ts:
-                    forward[p_dt] = sorted(ts)
-        hindsight: list[datetime] = []
-        hdir = self.run_dir / "hindsight"
-        if hdir.is_dir():
-            for t_dir in hdir.iterdir():
-                if t_dir.is_dir() and t_dir.name.startswith("t=") and (t_dir / "depth.tif").exists():
-                    try:
-                        hindsight.append(_parse_compact(t_dir.name[2:]))
-                    except ValueError:
-                        pass
-        self._precomputed_index = (forward, sorted(hindsight))
-        self._precomputed_index_at = now
-        return self._precomputed_index
-
-    def resolve_precomputed(
-        self, p: datetime | str | None, t: datetime | str, max_back_minutes: int = 60
-    ) -> ResolvedQuery | None:
-        """Resolve to the nearest prewarmed product instead of computing.
-
-        Forward queries take the prewarmed cutoff at or before p (within max_back_minutes)
-        whose target times come closest to t, ties to the most recent cutoff; hindsight
-        queries take the nearest prewarmed hindsight target. None when nothing qualifies.
-        The returned query keeps the caller's original request.
-        """
-        res = self.resolve(p, t)
-        forward, hindsight = self.precomputed_index()
-        if res.mode == "hindsight":
-            if not hindsight:
-                return None
-            t_best = min(hindsight, key=lambda x: abs((x - res.t).total_seconds()))
-            return ResolvedQuery(
-                mode="hindsight", p=None, t=t_best, p_internal=res.p_internal,
-                horizon_minutes=0, requested=res.requested,
-            )
-        best: tuple[tuple[float, float], datetime, datetime] | None = None
-        for p_c, ts in forward.items():
-            back = (res.p - p_c).total_seconds() / 60.0
-            if back < 0 or back > max_back_minutes:
-                continue
-            t_c = min(ts, key=lambda x: abs((x - res.t).total_seconds()))
-            score = (abs((t_c - res.t).total_seconds()), back)
-            if best is None or score < best[0]:
-                best = (score, p_c, t_c)
+            for t_c in ts:
+                h_c = (t_c - p_c).total_seconds() / 60.0
+                score = (abs(h_c - want_h), abs((t_c - res.t).total_seconds()), back)
+                if best is None or score < best[0]:
+                    best = (score, p_c, t_c)
         if best is None:
             return None
         _, p_c, t_c = best

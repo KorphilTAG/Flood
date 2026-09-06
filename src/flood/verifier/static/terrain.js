@@ -284,8 +284,14 @@ function updateReadout(p, t, st) {
     iso
       ? `${formatDateTime(iso, 'UTC')}Z<span class="local">${escapeHtml(formatDateTime(iso, tz, true))}</span>`
       : '-';
-  if (pEl) pEl.innerHTML = p === 'hindsight' ? 'hindsight' : stamp(p);
-  if (tEl) tEl.innerHTML = stamp(t);
+  // Served values, with the requested ones alongside when the server snapped to a
+  // prewarmed neighbour, so the readout never silently disagrees with the clock.
+  const req = st && st.requested ? st.requested : null;
+  const servedP = p === 'hindsight' ? 'hindsight' : p;
+  const askedP = req && req.p !== servedP ? ` <span class="local">asked ${escapeHtml(req.p === 'hindsight' ? 'hindsight' : formatDateTime(req.p, 'UTC') + 'Z')}</span>` : '';
+  const askedT = req && req.t !== t ? ` <span class="local">asked ${escapeHtml(formatDateTime(req.t, 'UTC'))}Z</span>` : '';
+  if (pEl) pEl.innerHTML = (p === 'hindsight' ? 'hindsight' : stamp(p)) + askedP;
+  if (tEl) tEl.innerHTML = stamp(t) + askedT;
   if (cEl) {
     if (st && st.compute_ms) {
       const parts = [];
