@@ -365,6 +365,49 @@ def test_cors_for_map_clients(client: TestClient) -> None:
     assert "X-Bounds-3857" in exposed and "X-Bounds-4326" in exposed
 
 
+@pytest.mark.parametrize("store", ["real"], indirect=True)
+def test_precomputed_mode_serves_nearest_prewarmed_state(client: TestClient, store: Any) -> None:
+    """precomputed=1 snaps to the nearest prewarmed product and never computes; 404 when none is near."""
+    create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
+    run_id = create_resp.json()["run_id"]
+    run = store.get(run_id)
+
+    # Nothing prewarmed yet: refuse rather than compute.
+    resp = client.get(f"/runs/{run_id}/state?p=2025-01-01T02:00:00Z&t=2025-01-01T03:00:00Z&precomputed=1")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_precomputed"
+
+    run.state("2025-01-01T02:00:00Z", "2025-01-01T03:00:00Z", write=True)
+    run.state("2025-01-01T02:00:00Z", "2025-01-01T02:00:00Z", write=True)
+    run.state("hindsight", "2025-01-01T04:00:00Z", write=True)
+
+    # A cutoff ten minutes later with the same horizon snaps back to the prewarmed pair.
+    resp = client.get(f"/runs/{run_id}/state?p=2025-01-01T02:10:00Z&t=2025-01-01T03:10:00Z&precomputed=1")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["p"] == "2025-01-01T02:00:00Z"
+    assert body["t"] == "2025-01-01T03:00:00Z"
+    assert body["requested"] == {"p": "2025-01-01T02:10:00Z", "t": "2025-01-01T03:10:00Z"}
+    assert body["cache"] in ("precomputed", "hit")
+
+    # Companion routes snap the same way and succeed without computing.
+    for path in (
+        f"/runs/{run_id}/reaches?p=2025-01-01T02:10:00Z&t=2025-01-01T03:10:00Z&precomputed=1",
+        f"/runs/{run_id}/gauges?p=2025-01-01T02:10:00Z&precomputed=1",
+        f"/runs/{run_id}/overlay.png?p=2025-01-01T02:10:00Z&t=2025-01-01T03:10:00Z&precomputed=1",
+    ):
+        assert client.get(path).status_code == 200, path
+
+    # Hindsight snaps to the nearest prewarmed hindsight target.
+    resp = client.get(f"/runs/{run_id}/state?p=hindsight&t=2025-01-01T04:20:00Z&precomputed=1")
+    assert resp.status_code == 200
+    assert resp.json()["t"] == "2025-01-01T04:00:00Z"
+
+    # Beyond the one-hour window: refuse.
+    resp = client.get(f"/runs/{run_id}/state?p=2025-01-01T05:00:00Z&t=2025-01-01T06:00:00Z&precomputed=1")
+    assert resp.status_code == 404
+
+
 def test_skill_route(client: TestClient, store: Any) -> None:
     """GET /runs/{run_id}/skill returns rows of skill.parquet or 404 skill_not_computed."""
     create_resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})

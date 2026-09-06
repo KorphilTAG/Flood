@@ -18,6 +18,8 @@ from flood.contracts.validate import ContractError, validate_json
 from flood.interfaces import Grid, RASTER_BANDS
 from flood.products.raster import render_overlay_png
 from flood.scenario import load_scenario
+from flood.timegrid import to_iso
+from flood.timegrid import to_iso
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,40 @@ def get_store(request: Request) -> Any:
             message="Physics engine is unavailable",
         )
     return store
+
+
+def _snap_to_precomputed(run: Any, p: str | None, t: str) -> tuple[str, str, dict[str, str]]:
+    """Resolve to the nearest prewarmed product; 404 not_precomputed when none is within reach.
+
+    Returns the served p (or "hindsight"), the served t, and the original request.
+    """
+    if not hasattr(run, "resolve_precomputed"):
+        return (p if p else "hindsight"), t, {"p": p if p else "hindsight", "t": t}
+    res = run.resolve_precomputed(p, t)
+    if res is None:
+        raise APIError(
+            status_code=404,
+            code="not_precomputed",
+            message="No prewarmed product within 60 minutes of the requested cutoff; retry without precomputed=1 to compute",
+        )
+    return ("hindsight" if res.p is None else to_iso(res.p)), to_iso(res.t), res.requested
+
+
+def _snap_to_precomputed(run: Any, p: str | None, t: str) -> tuple[str, str, dict[str, str]]:
+    """Resolve to the nearest prewarmed product; 404 not_precomputed when none is within reach.
+
+    Returns the served p (or "hindsight"), the served t, and the original request.
+    """
+    if not hasattr(run, "resolve_precomputed"):
+        return (p if p else "hindsight"), t, {"p": p if p else "hindsight", "t": t}
+    res = run.resolve_precomputed(p, t)
+    if res is None:
+        raise APIError(
+            status_code=404,
+            code="not_precomputed",
+            message="No prewarmed product within 60 minutes of the requested cutoff; retry without precomputed=1 to compute",
+        )
+    return ("hindsight" if res.p is None else to_iso(res.p)), to_iso(res.t), res.requested
 
 
 def _get_run(store: Any, run_id: str) -> Any:
@@ -265,9 +301,15 @@ def get_state(
     run_id: str,
     p: str | None = None,
     t: str | None = None,
+    precomputed: bool = False,
     store: Any = Depends(get_store),
 ) -> JSONResponse:
-    """Resolve (p, t) query and return state response dict."""
+    """Resolve (p, t) and return the state response.
+
+    precomputed=1 serves the nearest prewarmed product instead of computing (404
+    not_precomputed if none is within an hour); the response's `requested` keeps the
+    original query and `p`/`t` say what was served.
+    """
     if not p or not t:
         raise APIError(
             status_code=400,
@@ -275,7 +317,12 @@ def get_state(
             message="Both 'p' and 't' query parameters are required",
         )
     run = _get_run(store, run_id)
+    requested = None
+    if precomputed:
+        p, t, requested = _snap_to_precomputed(run, p, t)
     _, state_dict = run.state(p, t, write=False)
+    if requested is not None and isinstance(state_dict, dict) and "requested" in state_dict:
+        state_dict = {**state_dict, "requested": requested}
     return JSONResponse(status_code=200, content=state_dict)
 
 
@@ -284,9 +331,10 @@ def get_reaches(
     run_id: str,
     p: str | None = None,
     t: str | None = None,
+    precomputed: bool = False,
     store: Any = Depends(get_store),
 ) -> JSONResponse:
-    """Return reach table as JSON array."""
+    """Return reach table as JSON array (precomputed=1: nearest prewarmed product, never computes)."""
     if not p or not t:
         raise APIError(
             status_code=400,
@@ -294,6 +342,8 @@ def get_reaches(
             message="Both 'p' and 't' query parameters are required",
         )
     run = _get_run(store, run_id)
+    if precomputed:
+        p, t, _ = _snap_to_precomputed(run, p, t)
     df = run.reaches(p, t)
     rows = _records(df)
     return JSONResponse(status_code=200, content=rows)
@@ -303,9 +353,10 @@ def get_reaches(
 def get_gauges(
     run_id: str,
     p: str | None = None,
+    precomputed: bool = False,
     store: Any = Depends(get_store),
 ) -> JSONResponse:
-    """Return gauge table as JSON array."""
+    """Return gauge table as JSON array (precomputed=1: nearest prewarmed cutoff, never computes)."""
     if not p:
         raise APIError(
             status_code=400,
@@ -313,6 +364,8 @@ def get_gauges(
             message="'p' query parameter is required",
         )
     run = _get_run(store, run_id)
+    if precomputed and p != "hindsight":
+        p, _, _ = _snap_to_precomputed(run, p, p)
     df = run.gauges(p)
     rows = _records(df)
     return JSONResponse(status_code=200, content=rows)
@@ -344,6 +397,7 @@ def get_tte(
     run_id: str,
     request: Request,
     p: str | None = None,
+    precomputed: bool = False,
     store: Any = Depends(get_store),
 ) -> Response:
     """Return time_to_exceedance.tif. 400 hindsight_has_no_tte when p=hindsight."""
@@ -360,6 +414,8 @@ def get_tte(
             message="Hindsight mode has no time-to-exceedance",
         )
     run = _get_run(store, run_id)
+    if precomputed:
+        p, _, _ = _snap_to_precomputed(run, p, p)
     run.tte(p, write=True)
     tte_path = run.product_path("time_to_exceedance", p)
     return range_file_response(tte_path, request.headers.get("Range"), media_type="application/octet-stream")
@@ -372,6 +428,7 @@ def get_overlay(
     t: str | None = None,
     band: str = "depth_mid",
     max_px: int = 2048,
+    precomputed: bool = False,
     smooth: int = 0,
     store: Any = Depends(get_store),
 ) -> Response:
@@ -397,6 +454,8 @@ def get_overlay(
 
     clamped_max_px = max(256, min(8192, int(max_px)))
     run = _get_run(store, run_id)
+    if precomputed:
+        p, t, _ = _snap_to_precomputed(run, p, t)
     state_arrays, _ = run.state(p, t, write=False)
     array = getattr(state_arrays, band)
 
