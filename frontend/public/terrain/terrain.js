@@ -93,8 +93,8 @@ export const state = {
   band: 'depth_mid',
   maxPx: 6144, // about 12 m per pixel over the corridor, close to the 10 m grid
   opacity: 0.85,
-  basemap: 'dark',
-  exaggeration: 1.6,
+  basemap: 'satellite',
+  exaggeration: 3.0,
   showHillshade: true,
   showReaches: true,
   showGauges: true,
@@ -137,8 +137,11 @@ const incidentLayerIds = {
   landmarks: ['incident-landmarks'],
   flow: ['incident-flow'],
 };
+const incidentAreas = new Map();
+let incidentSelection = null;
 
 function setIncidentLayers(layers = {}, selected) {
+  incidentSelection = selected || incidentSelection;
   for (const [name, ids] of Object.entries(incidentLayerIds)) {
     for (const id of ids) if (map?.getLayer(id)) map.setLayoutProperty(id, 'visibility', layers[name] === false ? 'none' : 'visible');
   }
@@ -148,6 +151,13 @@ function setIncidentLayers(layers = {}, selected) {
   }
 }
 
+function focusIncidentArea(id) {
+  const area = incidentAreas.get(id);
+  if (!area || !map) return;
+  userMoved = true;
+  map.flyTo({ center: [area.lon, area.lat], zoom: 13.1, pitch: 68, bearing: -18, duration: 950 });
+}
+
 function incidentCircle(lon, lat, dx = 0.006, dy = 0.004) {
   return [[lon - dx, lat - dy], [lon + dx, lat - dy], [lon + dx, lat + dy], [lon - dx, lat + dy], [lon - dx, lat - dy]];
 }
@@ -155,7 +165,10 @@ function incidentCircle(lon, lat, dx = 0.006, dy = 0.004) {
 async function addIncidentLayers() {
   try {
     const fixture = await fetch('mock.json').then((r) => r.ok ? r.json() : Promise.reject(new Error('Operational fixtures unavailable')));
-    const sectors = fixture.sectors.map((s) => ({ type: 'Feature', properties: { id: s.id, code: s.code, name: s.name, severity: s.severity }, geometry: { type: 'Polygon', coordinates: [incidentCircle(s.lon, s.lat)] } }));
+    const sectors = fixture.sectors.map((s) => {
+      incidentAreas.set(s.id, s);
+      return { type: 'Feature', properties: { id: s.id, code: s.code, name: s.name, severity: s.severity }, geometry: { type: 'Polygon', coordinates: [incidentCircle(s.lon, s.lat)] } };
+    });
     const pointFeatures = (items, properties) => ({ type: 'FeatureCollection', features: items.map((item) => ({ type: 'Feature', properties: properties(item), geometry: { type: 'Point', coordinates: [item.lon, item.lat] } })) });
     map.addSource('incident-areas', { type: 'geojson', data: { type: 'FeatureCollection', features: sectors } });
     map.addSource('incident-teams', { type: 'geojson', data: pointFeatures(fixture.teams, (t) => ({ label: t.name })) });
@@ -175,12 +188,17 @@ async function addIncidentLayers() {
     map.on('click', 'incident-areas-fill', (e) => window.parent.postMessage({ type: 'incident-select', id: e.features?.[0]?.properties?.id }, window.location.origin));
     map.on('mouseenter', 'incident-areas-fill', (e) => { map.getCanvas().style.cursor = 'pointer'; window.parent.postMessage({ type: 'incident-hover', id: e.features?.[0]?.properties?.id }, window.location.origin); });
     map.on('mouseleave', 'incident-areas-fill', () => { map.getCanvas().style.cursor = ''; window.parent.postMessage({ type: 'incident-hover', id: null }, window.location.origin); });
+    setIncidentLayers({}, incidentSelection);
+    if (incidentSelection) focusIncidentArea(incidentSelection);
   } catch (err) { console.warn(err); }
 }
 
 window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin || !event.data) return;
-  if (event.data.type === 'incident-layers') setIncidentLayers(event.data.layers, event.data.selected);
+  if (event.data.type === 'incident-layers') {
+    setIncidentLayers(event.data.layers, event.data.selected);
+    if (event.data.selected) focusIncidentArea(event.data.selected);
+  }
   if (event.data.type === 'terrain-camera' && event.data.camera === 'corridor') fitCorridor();
 });
 
@@ -956,13 +974,15 @@ async function postClock(body) {
 async function loadRuns() {
   const runs = await fetchJson(API.runs);
   const sel = document.getElementById('run-select');
-  sel.innerHTML = '';
-  for (const r of runs) {
-    const opt = document.createElement('option');
-    opt.value = r.run_id;
-    const name = r.scenario && r.scenario.name ? r.scenario.name : r.scenario_id || '';
-    opt.textContent = name ? `${r.run_id} (${name})` : r.run_id;
-    sel.appendChild(opt);
+  if (sel) {
+    sel.innerHTML = '';
+    for (const r of runs) {
+      const opt = document.createElement('option');
+      opt.value = r.run_id;
+      const name = r.scenario && r.scenario.name ? r.scenario.name : r.scenario_id || '';
+      opt.textContent = name ? `${r.run_id} (${name})` : r.run_id;
+      sel.appendChild(opt);
+    }
   }
   if (!runs.length) {
     showError('No runs found. Create one with the flood CLI or POST /runs, then reload.');
@@ -970,7 +990,7 @@ async function loadRuns() {
   }
   const wanted = new URLSearchParams(window.location.search).get('run');
   const chosen = runs.find((r) => r.run_id === wanted) ? wanted : runs[0].run_id;
-  sel.value = chosen;
+  if (sel) sel.value = chosen;
   await selectRun(chosen);
 }
 
@@ -1028,6 +1048,7 @@ async function selectRun(runId) {
 
 function bindControls() {
   document.getElementById('btn-dismiss-error')?.addEventListener('click', hideError);
+  document.getElementById('reset-camera')?.addEventListener('click', fitCorridor);
 
   document.getElementById('run-select')?.addEventListener('change', (e) => selectRun(e.target.value));
 

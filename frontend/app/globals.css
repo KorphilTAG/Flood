@@ -4213,3 +4213,24 @@ textarea,
     flex-basis: 138px;
   }
 }
+
+/* Field work happens in a dark phone surface; keep every working label legible. */
+.phone-frame,
+.phone-screen,
+.phone-frame .field-task-tabs > [data-slot='tabs-content'] {
+  color: #e5f0fa;
+}
+.phone-frame p,
+.phone-frame label,
+.phone-frame dt,
+.phone-frame dd,
+.phone-frame small,
+.phone-frame [data-slot='select-value'] {
+  color: #d6e5f2;
+}
+.phone-frame button,
+.phone-frame input,
+.phone-frame textarea,
+.phone-frame [data-slot='select-trigger'] {
+  color: #f4f9ff;
+}
