@@ -26,6 +26,7 @@ def _default_generator(
     response_schema: type[BaseModel],
     *,
     settings: Settings,
+    correction: str | None = None,
 ) -> BaseModel:
     # Imported lazily so importing this module (and constructing the FastAPI
     # app) never requires `langchain_openai`'s OpenAI client to validate an
@@ -34,7 +35,7 @@ def _default_generator(
 
     llm = ChatOpenAI(model=settings.openai_model, temperature=0, timeout=settings.request_timeout)
     structured_llm = llm.with_structured_output(response_schema)
-    human_message = build_human_message(plan, situation, decision_point, chunks)
+    human_message = build_human_message(plan, situation, decision_point, chunks, correction=correction)
     return structured_llm.invoke([("system", SYSTEM_PROMPT), ("human", human_message)])
 
 
@@ -47,6 +48,7 @@ def generate_critique(
     *,
     generator: Generator | None = None,
     settings: Settings | None = None,
+    correction: str | None = None,
 ) -> BaseModel:
     """Call the LLM (or an injected fake) to produce a structured critique.
 
@@ -55,6 +57,17 @@ def generate_critique(
     ignore it entirely. Defaults to a fresh `Settings()` (env-driven) if
     neither is given, so a caller that only overrides `generator` (as every
     offline test does) never needs to construct one.
+
+    `correction`, when not `None`, is an additional corrective instruction
+    (built by `prompts.py::build_correction_message`) for a regeneration
+    attempt after the validator found a citation violation in a previous
+    attempt's response; it is forwarded to `generator`/the default generator
+    only when set, so an existing fake `generator` with no `correction`
+    parameter (every fake generator in `historical-critic-api`'s tests)
+    remains valid, unmodified, on a first, uncorrected attempt.
     """
     call = generator or _default_generator
-    return call(plan, situation, decision_point, chunks, response_schema, settings=settings or Settings())
+    kwargs: dict = {"settings": settings or Settings()}
+    if correction is not None:
+        kwargs["correction"] = correction
+    return call(plan, situation, decision_point, chunks, response_schema, **kwargs)

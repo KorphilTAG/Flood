@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from .validator import CitationViolation
+
 SYSTEM_PROMPT = (
     "You are a historical-critique assistant for flood emergency response training. "
     "You are given a trainee's proposed plan and a set of historical Texas flood "
@@ -35,9 +37,16 @@ def build_human_message(
     situation: str | None,
     decision_point: str | None,
     chunks: Sequence[dict],
+    *,
+    correction: str | None = None,
 ) -> str:
     """Render the plan/situation/decision-point text plus every retrieved
     chunk, formatted so the model can cite each one by its exact chunk ID.
+
+    `correction`, when given, is appended as an extra trailing section --
+    the corrective instruction built by `build_correction_message` for a
+    regeneration attempt after the validator (`validator.py`) found a
+    citation violation in a previous attempt's response.
     """
     lines: list[str] = []
     if decision_point:
@@ -52,4 +61,27 @@ def build_human_message(
     )
     for chunk in chunks:
         lines.append(_render_chunk(chunk))
-    return "\n".join(lines)
+    message = "\n".join(lines)
+    if correction:
+        message = f"{message}\n\n{correction}"
+    return message
+
+
+def build_correction_message(
+    violations: Sequence[CitationViolation], valid_ids: set[str]
+) -> str:
+    """Build a deterministic corrective instruction for a regeneration
+    attempt, naming each invalid reference the validator found and
+    reiterating the exact valid `chunk_id` set. No LLM call; a small string
+    builder only.
+    """
+    offending = ", ".join(
+        f"{v.item_kind}[{v.item_index}].{v.field}={v.value!r}" for v in violations
+    )
+    valid = ", ".join(sorted(valid_ids))
+    return (
+        "Your previous response cited something not in the retrieved set: "
+        f"{offending}. Use only the exact bracketed chunk IDs listed above, in "
+        "both the chunk_ids field and any bracketed reference in your text. "
+        f"The only valid chunk IDs for this request are: {valid}."
+    )
