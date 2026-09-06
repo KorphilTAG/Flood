@@ -95,40 +95,20 @@ Residual risk / Not done.
 
 ## Residual risk
 
-1. **`ragas>=0.2` resolves, as installed fresh today, to a version whose
-   `import ragas` crashes.** A plain `pip install -r requirements.txt` today
-   (2026-09-05) resolves `ragas` to `0.4.3` (latest) and `langchain-community`
-   to `0.4.2` (also latest, satisfying the repo's pre-existing unbounded
-   `langchain-community>=0.3` pin). `ragas` 0.4.3's own `ragas/llms/base.py`
-   unconditionally does `from langchain_community.chat_models.vertexai import
-   ChatVertexAI` -- a submodule removed from `langchain-community` during its
-   own 0.4.x "sunset" deprecation. The result: `import ragas` raises
-   `ModuleNotFoundError` before any of this feature's own code runs, on a
-   completely fresh install. I confirmed this is not specific to `ragas`
-   0.4.3 -- `ragas==0.2.15` (the version whose class names spec.md's
-   Assumptions section literally guesses, `Faithfulness` /
-   `LLMContextPrecisionWithoutReference`) hits the exact same import crash
-   against the same `langchain-community==0.4.2`, because the break is in
-   `langchain-community`'s own sunset removal, not in `ragas`'s version churn
-   the spec anticipated. I found and verified a working combination:
-   `ragas==0.2.15` + `langchain-community==0.3.27` + `langchain-core<1` +
-   `langchain-openai<1` (installed after the plain `requirements.txt` set).
-   Under that combination, `import ragas` succeeds and `ragas.metrics`
-   exposes **exactly** the two class names spec.md's Assumptions predicted
-   (`Faithfulness`, `LLMContextPrecisionWithoutReference`) -- so **no metric
-   substitution was needed** in `ragas_eval.py`. What I did *not* do: change
-   `ingestion/requirements.txt`'s existing `langchain-core`/
-   `langchain-community`/`langchain-openai` lower-bound-only pins to add an
-   upper bound. Spec's own "Files to change" table only authorizes adding the
-   `ragas>=0.2` line to `requirements.txt`, not touching the other
-   already-established pins, and picking an arbitrary upper bound for
-   unrelated packages felt like exactly the kind of scope expansion
-   developer.md tells me not to do unilaterally. Net effect: **as literally
-   written, `requirements.txt` does not yet guarantee a working install** --
-   whoever runs this for real should pin a langchain stack compatible with
-   whatever `ragas` version resolves (the combination above is a known-good
-   starting point), or the repo's LangChain pins should eventually gain
-   upper bounds as a separate, deliberate decision.
+1. **RESOLVED.** `ragas>=0.2` originally let a fresh install resolve
+   `ragas==0.4.3` + `langchain-community==0.4.2`, and `ragas` 0.4.3's own
+   `ragas/llms/base.py` unconditionally imports
+   `langchain_community.chat_models.vertexai.ChatVertexAI` -- a submodule
+   `langchain-community` removed in its own 0.4.x sunset -- so `import ragas`
+   crashed with `ModuleNotFoundError` before any of this feature's code ran.
+   `ingestion/requirements.txt` now pins the verified-working combination:
+   `langchain-core>=0.3,<1`, `langchain-community==0.3.27`,
+   `langchain-openai>=0.2,<1`, `ragas==0.2.15`. Re-verified in a fresh,
+   throwaway venv after applying these pins: `pip install -r requirements.txt`
+   resolves exactly that combination, `import ragas` succeeds, `ragas.metrics`
+   exposes exactly `Faithfulness`/`LLMContextPrecisionWithoutReference` (no
+   metric substitution needed, confirmed via direct import), and
+   `KMP_DUPLICATE_LIB_OK=TRUE pytest` passes **91/91** with no failures.
 2. **`Settings.sample_path`/`Settings.report_dir` defaults were changed from
    spec.md's literal quoted strings.** spec.md's own settings.py bullet
    writes these defaults with an `ingestion/`-prefix
