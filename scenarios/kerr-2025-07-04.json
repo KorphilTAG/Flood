@@ -1,0 +1,238 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "kerr-2025-07-04",
+  "name": "Guadalupe River flash flood, Kerr County, Texas, 4 July 2025",
+  "description": "Replay of the July 2025 flood from the flood watch through the flash flood emergency. Corridor covers the South Fork and North Fork above Hunt, lower Johnson Creek, and the Guadalupe main stem down to Comfort.",
+  "timezone": "America/Chicago",
+  "hydrology": {
+    "huc8": [
+      "12100201"
+    ],
+    "fim_version": "4.9.9.0",
+    "aoi": {
+      "crs": "EPSG:5070",
+      "bounds": [
+        -340000.0,
+        764000.0,
+        -274000.0,
+        790000.0
+      ]
+    },
+    "record": {
+      "start": "2025-07-03T12:00:00Z",
+      "end": "2025-07-05T12:00:00Z"
+    },
+    "gauges": [
+      {
+        "site": "08165300",
+        "name": "N Fk Guadalupe Rv nr Hunt, TX",
+        "feature_id": 3585678,
+        "role": "boundary"
+      },
+      {
+        "site": "08165500",
+        "name": "Guadalupe Rv at Hunt, TX",
+        "feature_id": 3586192,
+        "role": "interior"
+      },
+      {
+        "site": "08166000",
+        "name": "Johnson Ck nr Ingram, TX",
+        "feature_id": 3585554,
+        "role": "boundary"
+      },
+      {
+        "site": "08166140",
+        "name": "Guadalupe Rv abv Bear Ck at Kerrville, TX",
+        "feature_id": 3585626,
+        "role": "interior"
+      },
+      {
+        "site": "08166200",
+        "name": "Guadalupe Rv at Kerrville, TX",
+        "feature_id": 3585724,
+        "role": "interior"
+      },
+      {
+        "site": "08166250",
+        "name": "Guadalupe Rv nr Center Point, TX",
+        "feature_id": 3587616,
+        "role": "interior"
+      },
+      {
+        "site": "08167000",
+        "name": "Guadalupe Rv at Comfort, TX",
+        "feature_id": 3589508,
+        "role": "validation_only"
+      }
+    ],
+    "junction_inferences": [
+      {
+        "label": "South Fork Guadalupe at the Hunt confluence",
+        "inferred_reach": 3585750,
+        "downstream_gauge": "08165500",
+        "subtract_gauges": [
+          "08165300"
+        ],
+        "travel_time_minutes": 20
+      }
+    ]
+  },
+  "forcing_defaults": {
+    "sources": [
+      {
+        "type": "usgs_continuous",
+        "availability_latency_min": 5,
+        "sites": [
+          "08165300",
+          "08165500",
+          "08166000",
+          "08166140",
+          "08166200",
+          "08166250",
+          "08167000"
+        ],
+        "parameters": [
+          "00060",
+          "00065"
+        ]
+      },
+      {
+        "type": "nwm_analysis_assim",
+        "availability_latency_min": 60
+      },
+      {
+        "type": "nwm_short_range",
+        "availability_latency_min": 90,
+        "max_lead_hours": 6
+      }
+    ],
+    "state_estimation": {
+      "bias_correction": "nearest_gauge_ratio",
+      "use_junction_inferences": true,
+      "ratio_clamp": [
+        0.2,
+        10.0
+      ]
+    },
+    "boundary_forecast": {
+      "method": "trend_relax",
+      "members": {
+        "low": 0.5,
+        "mid": 1.0,
+        "high": 1.5
+      },
+      "relax_minutes": 60,
+      "trend_window_minutes": 30
+    },
+    "routing": {
+      "method": "muskingum_cunge",
+      "dt_minutes": 5
+    },
+    "roughness": {
+      "manning_n_scale": 0.5,
+      "gauge_calibration": true
+    },
+    "scenario_overrides": [
+      { "type": "gauge_outage", "gauge_ref": "gauge:08166140", "from": "2025-07-04T09:00:00Z" },
+      { "type": "gauge_outage", "gauge_ref": "gauge:08166250", "from": "2025-07-04T10:30:00Z" }
+    ]
+  },
+  "exposure_layers": [
+    {
+      "layer_id": "crossing",
+      "name": "Low-water crossings",
+      "source": "../data/exposure/kerr_low_water_crossings.gpkg",
+      "id_field": "crossing_id",
+      "geometry": "point",
+      "attributes": [
+        "road_name"
+      ],
+      "impact": {
+        "impassable_depth_m": 0.15,
+        "hazard_dv_limit": 0.5
+      }
+    },
+    {
+      "layer_id": "road",
+      "name": "Road segments",
+      "source": "../data/exposure/kerr_roads.gpkg",
+      "id_field": "segment_id",
+      "geometry": "line",
+      "attributes": [
+        "name",
+        "functional_class"
+      ],
+      "impact": {
+        "impassable_depth_m": 0.3
+      }
+    },
+    {
+      "layer_id": "structure",
+      "name": "Building footprints",
+      "source": "../data/exposure/kerr_buildings.gpkg",
+      "id_field": "osm_id",
+      "geometry": "polygon",
+      "attributes": [
+        "building"
+      ],
+      "impact": {
+        "threatened_depth_m": 0.1
+      }
+    },
+    {
+      "layer_id": "site",
+      "name": "Occupancy sites",
+      "source": "../data/exposure/kerr_sites.gpkg",
+      "id_field": "site_id",
+      "geometry": "polygon",
+      "attributes": [
+        "name",
+        "site_type",
+        "occupancy_est"
+      ],
+      "impact": {
+        "threatened_depth_m": 0.1
+      },
+      "egress": {
+        "routes_layer": "road",
+        "join_field": "egress_for_site"
+      }
+    }
+  ],
+  "decision_points": [
+    {
+      "id": "dp1",
+      "t": "2025-07-03T18:18:00Z",
+      "label": "Flood watch issued",
+      "prompt": "The county plan prescribes reconnaissance of known trouble spots after a watch. What do you order?"
+    },
+    {
+      "id": "dp2",
+      "t": "2025-07-04T06:14:00Z",
+      "label": "Flash flood warning",
+      "prompt": "State your tactics for the next two hours: alerting, reconnaissance, resource staging."
+    },
+    {
+      "id": "dp3",
+      "t": "2025-07-04T07:30:00Z",
+      "label": "Hunt gauge rising fast",
+      "prompt": "Choose an alerting method and evacuation posture for riverfront occupancy sites."
+    },
+    {
+      "id": "dp4",
+      "t": "2025-07-04T09:03:00Z",
+      "label": "Flash flood emergency",
+      "prompt": "Prioritise search areas and rescue resources."
+    }
+  ],
+  "last_known_positions": [
+    {
+      "id": "lkp1",
+      "t": "2025-07-04T08:45:00Z",
+      "lon": -99.355,
+      "lat": 30.045,
+      "note": "Scripted: call reporting persons swept from a riverside cabin"
+    }
+  ]
+}

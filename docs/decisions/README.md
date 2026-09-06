@@ -15,3 +15,5 @@ Format: `NNNN-short-title.md` with sections Status, Context, Decision, Consequen
 | [0006](0006-simple-storage-before-postgis-titiler.md) | Start with files and in-process serving; adopt PostGIS or TiTiler only on stated triggers | Accepted |
 | [0007](0007-aar-generator.md) | Add an after-action-report generator on the LLM endpoint | Accepted |
 | [0008](0008-scenario-is-data-not-code.md) | Scenario is data, never code: scenario file, exposure registry, `<layer_id>:<source_id>` feature IDs | Accepted |
+| [0010](0010-calibrate-conveyance-scale-to-gauges.md) | One Manning n scale calibrated to gauge stage and wave arrival, applied to mapping, tables and routing | Accepted |
+| [0009](0009-terrain-view-on-public-terrain-tiles.md) | Drape the engine's overlay on public terrain tiles for the 3D view; no DEM ingest, no tile server | Accepted |

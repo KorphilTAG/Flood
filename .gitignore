@@ -1,0 +1,37 @@
+# Data: the HAND source files, gauge and NWM forcing, and the prewarmed reference run are
+# tracked so teammates can run the engine after `flood prep hand` rebuilds the cube locally.
+# The cube itself (1.2 GB of dense arrays) and superseded runs stay out of git.
+data/*
+!data/hand/
+!data/usgs/
+!data/nwm/
+data/**/*.part
+data/nwm/**/raw/
+runs/*
+!runs/kerr-2025-07-04-replay-fe0f78/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+tests/fixtures/mini_huc/out/
+.claude/settings.local.json
+
+# Manually acquired source PDFs, verified source manifests, and generated local AAR indices.
+# (covered by data/* above, called out here for clarity)
+
+# The demographic risk model's data. Its own rule on purpose: the `data/*`
+# above is anchored to the repo root and does NOT match project/data, unlike
+# the bare `data/` it replaced.
+#
+# The raw pulls (240 MB) stay out -- four of their six sources are pinned in
+# the URL, so re-fetching is deterministic. The three derived tables are
+# committed gzipped because the OpenFEMA query is not date-pinned and they are
+# the only reproducibility record for the scores in
+# project/logs/final_summary.log. Loaders prefer a local .csv and fall back.
+project/data/*
+!project/data/processed/
+project/data/processed/*
+!project/data/processed/*.csv.gz

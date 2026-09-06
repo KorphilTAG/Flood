@@ -1,0 +1,413 @@
+==============================================================================
+MODEL TEST SUITE -- SUMMARY
+==============================================================================
+
+winning config under test: mlp_h16_d0.5_wd0.01
+harness: leave-one-incident-out, 52 folds (unchanged, frozen)
+
+PASSED CLEANLY:
+  Test 3: Feature ablation
+  Test 4: Directional sanity checks
+  Test 8: Disaggregation sanity check
+
+FLAGGED FOR MANUAL REVIEW (expected: tests 1, 5, 7):
+  Test 1: Per-incident breakdown
+  Test 5: Unintended-correlate check
+  Test 7: Trained model vs nearest-neighbour fallback
+
+FAILED / AUTO-FIXED:
+  Test 2: Calibration check [FAIL (fix attempted, rejected)]
+  Test 6: Missing-data robustness [FAIL]
+
+AUTOMATED FIXES APPLIED (with before/after validation scores):
+  - Test 6 abstention rule: max_missing_features=0; applied at output time in build_heatmap.py (no score change -- it gates output, not fitting)
+
+FIXES ATTEMPTED AND REJECTED (change NOT applied):
+  - Test 2 calibration wrapper (isotonic): REJECTED -- RMSE 18.455 -> 21.469 (worse); Spearman 0.3395 -> 0.3409
+
+RE-RUN DISCIPLINE: the full training loop was NOT re-run. The only
+new harness evaluations are the ones named above, each traceable to
+a specific test finding, and all scored by the unmodified harness.
+
+==============================================================================
+
+==============================================================================
+TEST 1: Per-incident breakdown  [FLAG]
+==============================================================================
+Per-incident leave-one-incident-out scores (winning config).
+
+ incident  n_test  spearman   rmse states  median_rucc  median_density  mean_label
+     4893       5    -0.400 20.414     02        7.000           0.509       5.134
+     4826      23     0.018  6.576     50        9.000          37.415       4.726
+     4756      95     0.030  4.062     54        3.000         371.797       1.855
+     4932      16     0.074 15.329     54        8.000          54.726      12.752
+     4635     119     0.109  3.082     53        3.000         781.431       1.085
+     4421     140     0.121 27.103     19        2.000        1441.005       6.688
+     4250     774     0.173  4.425     29        1.000        1252.652       1.052
+     4797     229     0.176  9.565     27        4.000         156.370       5.479
+     4871     352     0.191  8.318     48        2.000        2187.790       6.169
+     4377     341     0.208 13.865     48        2.000        2321.034       3.295
+     4663     106     0.226 64.084     21        7.000          69.027      36.389
+     4781    2849     0.235 38.027     48        1.000        3755.277      22.306
+     4605     109     0.235  3.312     54        3.000         882.219       1.593
+     4269    1579     0.254  7.557     48        1.000        3940.310       1.696
+     4272    2198     0.256  4.148     48        1.000        3560.092       0.477
+     4787     139     0.256  3.171     54        3.000         729.905       1.630
+     4290     390     0.257  4.840     27        1.000        3526.146       0.868
+     4454     335     0.261  9.868     48        2.000        2323.796       2.151
+     4906    1091     0.263  1.667     53        1.000        3779.421       0.354
+     4655      49     0.266 15.145     30        3.000        1104.175       6.579
+     4273     125     0.274 44.762     54        3.000          94.820      17.194
+     4720     154     0.278 22.229     50        7.000          94.442      12.888
+     4241     909     0.287 45.660     45        2.000         872.149      24.327
+     4649      62     0.290  4.600     72        1.000        3341.411       2.240
+     4363     544     0.293  5.932     18        2.000        1342.513       1.377
+     4402     215     0.297  7.563     55        2.000        1253.454       3.086
+     4609      26     0.305 37.535     47        1.000          69.839      20.585
+     4595     373     0.313  4.260     21        4.000         271.713       1.672
+     4217     320     0.330  6.423     21        1.000        2709.560       1.291
+     4277     508     0.347 98.953     22        2.000         647.898      38.014
+     4909     409     0.347  5.362     15        1.000        5739.771       1.705
+     4466    1376     0.354 16.554     48        1.000        4368.163       3.373
+     4441     259     0.354 11.638     05        2.000         672.052       2.542
+     4317     626     0.361  6.509     29        1.500        1061.529       1.343
+     4933     708     0.377 21.396     18        1.000        2087.583       9.903
+     4266     193     0.389 31.904     48        2.000         195.846       6.209
+     4420     332     0.395 21.877     31        2.000        2438.344       6.299
+     4879     528     0.406  8.380     48        1.000        2640.783       2.808
+     4263     586     0.435 31.864     22        2.500         434.184      14.007
+     4683    2381     0.464  6.539     06        1.000        6177.944       2.495
+     4923     846     0.473 20.309     55        1.000        2564.160       9.918
+     4925     531     0.493 17.221     26        3.000         304.623       5.444
+     4606     257     0.498 10.249     22        2.000        1748.825       3.480
+     4873     285     0.522  6.496     05        2.000         496.499       5.833
+     4268     151     0.607 14.864     28        6.000          92.033       9.154
+     4807      24     0.634 22.786     46        2.000         247.762      14.295
+     4440      72     0.665  9.244     46        2.000        1389.466       5.665
+     4757    1540     0.671 66.855     26        1.000        3441.938      34.505
+     4892     428     0.671 38.124     55        1.000        4491.630      26.259
+     4665     424     0.694 24.100     29        1.000        3519.178      15.670
+     4819    1677     0.781 21.373     17        1.000        7015.316      11.544
+     4730       6     0.841  3.534     02        8.000           0.500       5.074
+
+mean=0.3395  std=0.2125
+
+SMALL FOLDS (n_test < 30) -- scores here are NOISE, not signal.
+A rank correlation on a handful of tracts is not interpretable, so
+these are excluded from the weak-incident diagnosis below:
+  DR-4893 (02) n_test=  5 spearman=-0.400  <- disregard, too few tracts
+  DR-4826 (50) n_test= 23 spearman=+0.018  <- disregard, too few tracts
+  DR-4932 (54) n_test= 16 spearman=+0.074  <- disregard, too few tracts
+  DR-4609 (47) n_test= 26 spearman=+0.305  <- disregard, too few tracts
+  DR-4807 (46) n_test= 24 spearman=+0.634  <- disregard, too few tracts
+  DR-4730 (02) n_test=  6 spearman=+0.841  <- disregard, too few tracts
+  (6 of 52 folds; they still enter the mean, which
+   is worth knowing when reading the headline score)
+
+incidents below mean-1sd (0.127) with n_test >= 30: 3
+
+COVERAGE CHECK for the weakest incidents (is this a data gap, not a model fault?)
+  DR-4756 (54) spearman=+0.030 n_test=95 rucc_iqr=[3,5]
+     training tracts in same RUCC band: 3,133 (11.3% of training data) across 36 other incidents
+     mean label this incident: 1.86 per 1k vs training mean 9.66
+  DR-4635 (53) spearman=+0.109 n_test=119 rucc_iqr=[3,3]
+     training tracts in same RUCC band: 1,949 (7.0% of training data) across 31 other incidents
+     mean label this incident: 1.08 per 1k vs training mean 9.67
+  DR-4421 (19) spearman=+0.121 n_test=140 rucc_iqr=[2,3]
+     training tracts in same RUCC band: 7,803 (28.2% of training data) across 42 other incidents
+     mean label this incident: 6.69 per 1k vs training mean 9.65
+
+MODEL NOT MODIFIED on the basis of this test, per the brief.
+Verdict is FLAG: needs a human read on whether the weak incidents
+are a coverage gap (fix = pull more comparison counties in that
+regime) or something intrinsic to those events.
+
+==============================================================================
+TEST 2: Calibration check  [FAIL (fix attempted, rejected)]
+==============================================================================
+Deciles of out-of-fold predicted score vs observed outcome.
+(label = IA registrations per 1,000 residents)
+
+ decile    n  mean_pred  mean_actual  median_actual  ratio_actual_over_pred
+      1 2782      0.679       14.640          5.211                  21.564
+      2 2781      0.967        2.840          0.610                   2.937
+      3 2781      1.079        3.650          0.282                   3.382
+      4 2782      1.188        3.051          0.233                   2.568
+      5 2781      1.324        4.583          0.339                   3.461
+      6 2781      1.524        4.476          0.341                   2.936
+      7 2782      1.797        5.726          0.520                   3.187
+      8 2781      2.185        6.608          0.578                   3.024
+      9 2781      2.964        9.775          0.810                   3.297
+     10 2782      9.522       41.024         12.506                   4.308
+
+overall mean predicted=2.323  mean actual=9.638  ratio=4.15x
+
+MISCALIBRATED: predictions are systematically under-confident by ~4.1x.
+
+*** NON-MONOTONIC CALIBRATION CURVE.
+    Decile(s) [1, 2] have a HIGHER median outcome than the decile
+    above them. Decile 1 (lowest predicted) carries a median
+    outcome of 5.21 per 1k -- higher than deciles 2-9
+    (range 0.23-0.81). The model's least-confident
+    predictions include a cluster of severe outcomes.
+    This matters for the fix: isotonic regression assumes a
+    monotonic predicted->actual relationship. That assumption is
+    violated here, so a monotonic wrapper cannot repair it.
+
+AUTOMATED FIX ATTEMPTED: isotonic regression wrapper.
+Fitted inside each training fold on an inner 25% holdout, so the
+calibrator never sees the held-out incident. Base model untouched.
+
+  Spearman before=0.3395  after=0.3409  (delta +0.0014)
+  RMSE     before=18.455  after=21.469  (delta +3.014)
+
+Isotonic regression is order-preserving, so it barely moves Spearman
+(the small change comes from isotonic collapsing distinct predictions
+into ties, not from reordering). RMSE is the metric it targets.
+
+  *** REJECTED. The wrapper made RMSE WORSE (18.455 -> 21.469).
+  Cause: the calibration curve above is not monotonic, and
+  isotonic regression can only fit a monotonic map. Forcing one
+  drags the low-prediction end upward to account for decile 1's
+  severe outcomes, which inflates error everywhere else.
+  The calibration wrapper is NOT applied to the output. The
+  underlying miscalibration therefore STANDS as a known defect,
+  and is why the GeoJSON must be read as relative shading only.
+  A conditional or two-part calibrator would be the next thing
+  to try -- flagged for the user, not attempted unilaterally.
+
+==============================================================================
+TEST 3: Feature ablation  [PASS]
+==============================================================================
+Baseline (all 29 features), recomputed under the same worker setup: 0.3395
+  (original training-loop score for this config: 0.3395)
+Each row re-scored on the frozen harness with that one feature removed.
+Negative delta = the feature was helping.
+
+             dropped  spearman   delta
+           EP_MINRTY    0.3074 -0.0321
+            EP_NOVEH    0.3286 -0.0109
+acs_median_hh_income    0.3299 -0.0096
+     acs_pop65_share    0.3371 -0.0024
+          EP_UNINSUR    0.3376 -0.0019
+           EP_MOBILE    0.3376 -0.0019
+         pop_density    0.3377 -0.0018
+           EP_LIMENG    0.3379 -0.0016
+          hu_density    0.3385 -0.0010
+           EP_NOHSDP    0.3387 -0.0008
+          RPL_THEME3    0.3388 -0.0008
+            EP_MUNIT    0.3389 -0.0006
+           EP_GROUPQ    0.3392 -0.0003
+           EP_SNGPNT    0.3395 -0.0000
+        daypop_ratio    0.3396  0.0000
+           EP_DISABL    0.3424  0.0028
+            EP_HBURD    0.3428  0.0033
+            EP_UNEMP    0.3448  0.0053
+          RPL_THEME4    0.3452  0.0057
+    acs_renter_share    0.3457  0.0062
+           EP_POV150    0.3457  0.0062
+            EP_AGE65    0.3460  0.0065
+          RPL_THEME1    0.3484  0.0089
+            EP_AGE17    0.3491  0.0096
+          RPL_THEMES    0.3501  0.0106
+           AREA_SQMI    0.3512  0.0116
+     acs_owner_share    0.3521  0.0126
+            EP_CROWD    0.3526  0.0131
+          RPL_THEME2    0.3579  0.0184
+
+single-feature-dominant (delta < -0.05): 0
+negligible (|delta| < 0.005): 14
+
+AUTOMATED FIX EVALUATED: dropped 14 negligible features -> 15 remain.
+  ['acs_pop65_share', 'EP_UNINSUR', 'EP_MOBILE', 'pop_density', 'EP_LIMENG', 'hu_density', 'EP_NOHSDP', 'RPL_THEME3', 'EP_MUNIT', 'EP_GROUPQ', 'EP_SNGPNT', 'daypop_ratio', 'EP_DISABL', 'EP_HBURD']
+
+  Spearman before=0.3395  after=0.3046 (-0.0349)
+  RMSE     before=18.455  after=18.566
+  REJECTED: dropping them cost more than the 0.005 tolerance, so the full feature set is retained.
+
+==============================================================================
+TEST 4: Directional sanity checks  [PASS]
+==============================================================================
+Synthetic probe rows: every feature at the training median except the
+named ones, set to the 90th (hi) or 10th (lo) percentile.
+NOTE: these are synthetic INPUTS used to probe a model trained only on
+real data. No synthetic row enters training or the GeoJSON.
+
+  (a) high poverty + high age65 + low vehicle access
+      prediction = 2.5829  (expected direction: higher risk)
+  (b) inverse of (a)
+      prediction = 1.9622  (expected direction: lower risk)
+  (c) high income + high vehicle access + low age65
+      prediction = 1.0518  (expected direction: lower risk)
+  (d) inverse of (c)
+      prediction = 4.3779  (expected direction: higher risk)
+
+  (a) vs (b): 2.5829 vs 1.9622 -> CORRECT
+  (d) vs (c): 4.3779 vs 1.0518 -> CORRECT
+
+Both contrasts move in the intuitive direction.
+
+==============================================================================
+TEST 5: Unintended-correlate check  [FLAG]
+==============================================================================
+Correlation between out-of-fold model predictions and ACS/SVI
+variables, including ones NOT used as training features.
+
+variable        in_features   spearman_vs_pred
+EP_AFAM               False             0.2744
+EP_HISP               False            -0.0486
+EP_ASIAN              False            -0.4080
+EP_AIAN               False            -0.0029
+EP_NOINT              False             0.4974
+EP_MINRTY              True             0.2537
+
+IMPORTANT CONTEXT: EP_MINRTY is itself a training feature, so
+correlation with its race/ethnicity components is expected by
+construction, not an emergent surprise.
+
+*** FLAGGED FOR USER REVIEW -- strong correlation with a variable
+    that was NOT a training input:
+      EP_ASIAN: rho=-0.4080
+      EP_NOINT: rho=+0.4974
+
+NO FEATURES ADDED OR REMOVED on the basis of this test, per the
+brief. This is reported for the user to judge: it may reproduce a
+documented equity pattern in the disaster-recovery literature, or
+it may be an artifact worth investigating. That call is not the
+model's to make.
+
+==============================================================================
+TEST 6: Missing-data robustness  [FAIL]
+==============================================================================
+Observed null rates in the joined table (Checkpoint 2 gaps):
+acs_median_hh_income    0.755
+RPL_THEME1              0.244
+RPL_THEMES              0.244
+EP_CROWD                0.219
+EP_HBURD                0.219
+RPL_THEME4              0.219
+EP_SNGPNT               0.219
+RPL_THEME2              0.219
+EP_NOVEH                0.219
+EP_MUNIT                0.212
+EP_MOBILE               0.212
+acs_renter_share        0.194
+acs_owner_share         0.194
+EP_POV150               0.176
+EP_UNEMP                0.111
+EP_DISABL               0.104
+EP_UNINSUR              0.104
+EP_NOHSDP               0.007
+
+Null patterns injected, in observed-frequency order: ['acs_median_hh_income', 'RPL_THEME1', 'RPL_THEMES']
+
+ n_nulled features nulled                               mean|delta|  max|delta|  corr vs intact
+        1 acs_median_hh_income                               0.2855      2.1027          0.5808
+        2 acs_median_hh_income,RPL_THEME1                    0.4738      3.6494          0.3158
+        3 acs_median_hh_income,RPL_THEME1,RPL_THEMES         0.7411      5.7831          0.1061
+
+largest mean shift as a fraction of the mean prediction: 52.7%
+
+PREDICTIONS DEGRADE SHARPLY ON PARTIAL DATA.
+
+  Rank correlation vs the intact prediction:
+    1 feature(s) missing -> rho=0.5808
+    2 feature(s) missing -> rho=0.3158
+    3 feature(s) missing -> rho=0.1061
+
+  Even ONE median-imputed feature reorders the predictions
+  substantially (rho=0.58). Median imputation is not a safe
+  default for this model.
+
+ABSTENTION RULE (derived from the numbers above, then applied):
+  max_missing_features = 0
+  A tract is scored only if it has a non-null population denominator
+  AND at most 0 of the 29 model features missing.
+  Otherwise the output is "insufficient data" rather than a number.
+
+  Rationale: the threshold is the largest missing-count that kept
+  rank correlation >= 0.95 against the intact prediction. No count
+  above 0 met that bar, so the rule requires complete features.
+  Cost: the real join has at most 0.76% nullity on any
+  single feature, so this abstains on a small minority of tracts
+  rather than gutting coverage.
+
+==============================================================================
+TEST 7: Trained model vs nearest-neighbour fallback  [FLAG]
+==============================================================================
+The 10 tracts where the trained model and the k=3 cosine retrieval
+fallback disagree most, by percentile rank of their predictions.
+
+harness scores: model=0.3395  fallback_nn=0.2366
+
+ disasterNumber  tract_fips  pred_model  pred_nn  r_model  r_nn  label_reg_per_1k  EP_POV150  EP_AGE65  EP_NOVEH  EP_MOBILE  RPL_THEMES  acs_median_hh_income  pop_density
+           4781 48113007829       0.555  153.877    0.017 0.996            44.675     31.800     9.600     9.700      0.000       0.647             54302.000     3580.100
+           4781 48201240600       0.538   49.600    0.013 0.956            29.313     70.600     1.500    23.000      0.200       0.975             31816.000     3599.172
+           4268 28119950200      15.179    0.000    0.984 0.046            16.443     45.300    18.300    15.000      3.300       0.874             27955.000      613.508
+           4781 48113016805       0.599   61.097    0.037 0.969             8.868     16.300     5.600     5.600      0.000       0.667             95306.000     4908.283
+           4781 48257050601       0.609   56.471    0.043 0.964            11.521     10.300    13.100     0.000     28.400       0.441            103409.000       73.383
+           4781 48121020116       0.642   69.687    0.055 0.976             4.888     11.400    13.600     4.400      0.500       0.175            104488.000      449.225
+           4909 15009030100       9.824    0.000    0.964 0.046            56.701     18.900    24.900     3.400      0.000       0.287             60707.000        5.429
+           4781 48113012208       0.608   49.600    0.042 0.956            18.001     56.100     7.900    17.400      0.800       0.984             32721.000     6521.109
+           4781 48201331604       8.754    0.000    0.958 0.046            33.875     32.900    25.500    24.400      0.000       0.719             36205.000     6125.869
+           4263 22017024303       8.548    0.000    0.957 0.046             1.512     24.700    18.700     6.200     16.500       0.730             49591.000      689.421
+
+NO WINNER SELECTED HERE, per the brief. This is a plausibility
+judgement for a human: read the features of each tract and decide
+which prediction looks more defensible. The harness already has an
+opinion (above); this table exists to let a person disagree with it.
+
+==============================================================================
+TEST 8: Disaggregation sanity check  [PASS]
+==============================================================================
+Per-tract weight reconciliation for output/demographic_risk.geojson:
+
+      tract  n_footprints  sum_weight    min    max  median  max_over_median
+48265960101           113      1.7948 0.0004 0.1176  0.0132           8.8884
+48265960102           443      2.0373 0.0000 0.1288  0.0022          57.8827
+48265960200          1845      1.3863 0.0000 0.0479  0.0007          70.0351
+48265960301           417      1.9621 0.0001 0.2422  0.0025          98.3553
+48265960303           788      1.8334 0.0001 0.0485  0.0021          23.3027
+48265960304           454      1.6263 0.0000 0.0374  0.0026          14.5421
+48265960401            83      2.8938 0.0028 0.1413  0.0341           4.1433
+48265960403           137      1.6319 0.0003 0.2675  0.0054          49.3347
+48265960404           640      1.4356 0.0000 0.0487  0.0013          36.8076
+48265960500          1647      2.8701 0.0001 0.0860  0.0013          66.6426
+48265960601           718      2.4075 0.0002 0.0572  0.0018          31.7252
+48265960602           563      2.0184 0.0001 0.1715  0.0026          67.1363
+48265960700           734      1.4313 0.0001 0.0715  0.0017          41.1860
+48265960800           213      1.5502 0.0005 0.0637  0.0057          11.2762
+
+total weight across all tracts: 26.8791
+features: 8,795
+score_source: model:mlp_h16_d0.5_wd0.01
+
+outlier footprints (>50x their tract's median weight): 6
+    building:osm:way/1417165882        tract=48265960301 weight=0.24225 (98x median)
+    building:osm:way/178409778         tract=48265960200 weight=0.04790 (70x median)
+    building:osm:way/1097873552        tract=48265960602 weight=0.17147 (67x median)
+    building:osm:way/704420458         tract=48265960500 weight=0.08597 (67x median)
+    building:osm:way/704422251         tract=48265960102 weight=0.12885 (58x median)
+    building:osm:way/81191227          tract=48265960500 weight=0.06565 (51x median)
+
+  These are large-footprint buildings (schools, retail, civic
+  halls). Area weighting is doing exactly what it was specified to
+  do; a large building carries a larger share of its tract's score.
+  Flagged for visibility, not as a defect.
+
+5 REAL FOOTPRINT EXAMPLES FOR MANUAL SPOT-CHECK
+    building:osm:way/46203177
+      tract=48265960102  weight=0.078742  source=model:mlp_h16_d0.5_wd0.01
+      coords=[-99.0908295, 29.9814102]
+    building:osm:way/46203271
+      tract=48265960102  weight=0.043267  source=model:mlp_h16_d0.5_wd0.01
+      coords=[-99.0900046, 29.9802268]
+    building:osm:way/81191227
+      tract=48265960500  weight=0.065646  source=model:mlp_h16_d0.5_wd0.01
+      coords=[-99.1432414, 30.0507373]
+    building:osm:way/99288575
+      tract=48265960304  weight=0.011265  source=model:mlp_h16_d0.5_wd0.01
+      coords=[-99.256651, 30.0715421]
+    building:osm:way/102923832
+      tract=48265960200  weight=0.001114  source=model:mlp_h16_d0.5_wd0.01
+      coords=[-99.1700468, 30.0624252]

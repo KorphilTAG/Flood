@@ -1,6 +1,6 @@
 # Physics engine cycles: parallel run configuration
 
-Companion to [physics-engine-master.md](physics-engine-master.md) section 12. One sub-spec per cycle lives at `pipeline/features/<slug>/spec.md` in the team template plus an "Implementer notes" section. The developer is a fast model driven from a terminal; the reviewer is the team's `pipeline-review` agent. Expect a short fix-up pass by a stronger model after every cycle.
+Companion to [physics-engine-master.md](physics-engine-master.md) section 12. One sub-spec per cycle lives at `pipeline/features/<slug>/spec.md` in the team template plus an "Implementer notes" section. The developer is a fast model driven from a terminal. Expect a short fix-up pass by a stronger model after every cycle, which also checks `changes.md` and the diff against the spec before merge.
 
 ## Waves
 
@@ -54,6 +54,8 @@ cd ../Flood-<slug> && py -3.12 -m venv .venv && .venv/Scripts/python -m pip inst
 
 Merge order within a wave does not matter because files are disjoint. Merge with `git merge --no-ff feature/<slug>` on `master`, run `pytest`, push. Delete the worktree after merge: `git worktree remove ../Flood-<slug>`.
 
+Never `git rebase` a `master` that contains these merge commits; rebase flattens them and re-raises every resolved conflict. To pick up teammates' work use `git fetch` then `git merge origin/master` (or `git pull --no-rebase`). Several cycles may also run in one worktree if the terminals are started there by mistake; it works because the files are disjoint, but the combined branch then merges as one commit.
+
 ## Per-cycle procedure
 
 1. Confirm the wave gate has merged. Create the worktree and environment.
@@ -62,9 +64,8 @@ Merge order within a wave does not matter because files are disjoint. Merge with
 
    > Implement exactly the spec at the path below. Read it in full first, then read `src/flood/interfaces.py` and the files the spec names. Follow "Files to change" and "Implementer notes" literally: exact paths, signatures, and test names. Do not edit files you do not own; record any needed change under Residual risk in changes.md. No scenario constants in code; everything comes from the scenario file. Run `pytest` before finishing. Fill `pipeline/features/<slug>/changes.md`. Do not commit.
 
-4. Run the reviewer: `/pipeline` review stage against `spec.md` and `changes.md`, or the equivalent manual invocation of `pipeline/agents/review.md`.
-5. Fix-up pass: address `FAIL` and `PASS WITH GAPS` items, rerun `pytest`, commit on the feature branch.
-6. Merge to `master`, push, remove the worktree.
+4. Fix-up pass: a stronger model checks the real diff and file contents against `spec.md` (not only `changes.md`'s self-report), addresses anything missing or incorrect, reruns `pytest`, commits on the feature branch.
+5. Merge to `master`, push, remove the worktree.
 
 ## Definition of done for the MVP path
 

@@ -1,0 +1,229 @@
+==============================================================================
+WINNING APPROACH -- demographic risk model
+==============================================================================
+
+Winner: mlp_h16_d0.5_wd0.01  (trained model, not the retrieval fallback)
+  mean Spearman rho = 0.3395 (std 0.2104) across 52 leave-one-incident-out folds
+  mean RMSE         = 18.455 registrations per 1,000 residents
+  family=mlp  config={'hidden': 16, 'dropout': 0.5, 'weight_decay': 0.01, 'feature_set': 'core', 'target': 'log1p(rate)'}
+  features: 29 columns (feature_set=core)
+
+WHY IT WON, in plain terms
+
+  1. It beat the nearest-neighbour retrieval fallback. The k=3 cosine
+     retrieval scored 0.2366 mean Spearman against the winner's
+     0.3395 on the identical frozen harness -- a 44% relative
+     improvement in rank agreement. Retrieval also carried a materially
+     worse RMSE (24.31 vs 18.45).
+
+  2. FAMILY REVERSAL vs the earlier Texas-only run -- and the clearest
+     argument for having expanded the data. On 9 Texas incidents the
+     shallow linear family won and the FFNs trailed. On 52 national
+     incidents both heavily-regularised FFNs overtake EVERY linear
+     configuration:
+       calibrated_isotonic      spearman=0.3409 rmse= 21.469   dropout=0.5 wd=0.01
+       mlp_h16_d0.5_wd0.01      spearman=0.3395 rmse= 18.455   dropout=0.5 wd=0.01
+       mlp_h32_d0.5_wd0.01      spearman=0.3356 rmse= 18.274   dropout=0.5 wd=0.01
+       mlp_h32_d0.3_wd0.001     spearman=0.3219 rmse= 27.155   dropout=0.3 wd=0.001
+       reduced_features         spearman=0.3046 rmse= 18.566   dropout=0.5 wd=0.01
+       reduced_features         spearman=0.3046 rmse= 18.566   dropout=0.5 wd=0.01
+       -- best linear:         
+       ridge_a1_core            spearman=0.3333 rmse= 19.602
+     Note WHICH FFNs win: the two at dropout 0.5 / weight decay 0.01.
+     The lightly-regularised one (dropout 0.3, wd 0.001) still loses to
+     the linear family. Capacity only pays here when it is heavily
+     penalised AND given enough incidents -- the PRD 6.4 data-scarcity
+     story observed directly, rather than assumed in either direction.
+
+     THIS RESULT DEPENDS ON A BUG FIX, recorded deliberately. An earlier
+     version trained the FFNs for a fixed 60 epochs and scored them at
+     0.06-0.19, and this summary concluded they had overfit. They were
+     undertrained -- training loss was still falling steeply at the
+     cutoff. Epochs are now set by early stopping on an inner split of
+     the training fold only. Had that bug survived, this run would have
+     reported the wrong winning family.
+
+  3. HOW BIG IS THE WIN, HONESTLY: small, and the team should decide.
+     The margin over the best linear model is +0.0063 Spearman, well
+     inside the fold-to-fold spread (std 0.2104). The RMSE gap is
+     more substantial (18.45 vs 19.60).
+     The task spec makes the frozen harness the decider, so the FFN is
+     what generated the GeoJSON. But PRD 6.4 states a standing
+     preference for the shallow, inspectable model, and ridge_a1_core
+     sits within noise of the winner while exposing 36 readable
+     coefficients instead of 1,697 opaque weights. If the project values
+     auditability over a ~0.006 Spearman gain, switching is defensible.
+     Flagged here rather than decided silently.
+
+  Tripwire: FIRED. fired at config 9 of a fixed 12-config grid; remaining pre-declared configs scored in a completeness pass
+  Configurations scored: 17 (+ 1 constant-baseline harness self-test).
+
+FULL LEADERBOARD (mean Spearman, leave-one-incident-out)
+  calibrated_isotonic        spearman= 0.3409  rmse=  21.469
+  mlp_h16_d0.5_wd0.01        spearman= 0.3395  rmse=  18.455
+  mlp_h32_d0.5_wd0.01        spearman= 0.3356  rmse=  18.274
+  ridge_a1_core              spearman= 0.3333  rmse=  19.602
+  ridge_a10_core             spearman= 0.3332  rmse=  19.601
+  ridge_a100_core            spearman= 0.3329  rmse=  19.595
+  ridge_a1000_core           spearman= 0.3287  rmse=  19.624
+  ridge_a100_full            spearman= 0.3284  rmse=  19.255
+  mlp_h32_d0.3_wd0.001       spearman= 0.3219  rmse=  27.155
+  logit_C1_core              spearman= 0.3159  rmse=  19.036
+  logit_C0.1_core            spearman= 0.3147  rmse=  19.036
+  logit_C0.1_full            spearman= 0.3079  rmse=  19.039
+  logit_C0.01_core           spearman= 0.3076  rmse=  19.038
+  reduced_features           spearman= 0.3046  rmse=  18.566
+  reduced_features           spearman= 0.3046  rmse=  18.566
+  logit_C0.01_full           spearman= 0.2986  rmse=  19.041
+  fallback_nn_full           spearman= 0.2580  rmse=  24.335
+  ridge_a100_svi_themes      spearman= 0.2418  rmse=  18.562
+  fallback_nn                spearman= 0.2366  rmse=  24.315
+  logit_C0.1_svi_themes      spearman= 0.2351  rmse=  19.058
+
+==============================================================================
+LIMITATIONS -- carry these into any UI label (addendum Section 6)
+==============================================================================
+
+  * TRACT RESOLUTION, FOOTPRINT DISPLAY. The model predicts at census
+    tract resolution. Every per-building weight in demographic_risk.geojson
+    is that single tract score split across footprints by building area,
+    NOT a per-building prediction. Two adjacent buildings differ in weight
+    only because they differ in footprint area. Do not read an individual
+    building's weight as a statement about that building.
+
+  * ACS COUNTS USUAL RESIDENTS, NOT TRANSIENT POPULATIONS. The ACS and
+    SVI inputs describe where people usually live. They do not capture
+    summer camp populations, RV parks, short-term rentals, or day
+    visitors -- precisely the populations most exposed in the July 2025
+    Kerr County event. This model therefore understates risk exactly
+    where the Guadalupe River camp corridor sits.
+
+  * SMALL-SAMPLE VALIDATION. 52 incidents means 52 folds. The
+    fold-to-fold spread is wide (std 0.2104); a single
+    unusual disaster moves the mean materially. Treat the headline score
+    as an order-of-magnitude indication of skill, not a precise estimate.
+
+  * THE LABEL IS SELF-REPORTED AID UPTAKE, NOT DAMAGE. OpenFEMA counts
+    who registered for Individual Assistance. That reflects outreach
+    intensity, awareness, and eligibility as much as physical flooding.
+    Rank agreement (Spearman) is reported as primary for this reason.
+
+  * WEAK AND NOT SIGNIFICANT WITHIN KERR -- THE MOST IMPORTANT CAVEAT.
+    On the held-out DR-4879 fold the model reaches Spearman 0.406
+    across all 528 declared tracts. But restricted to the 14 KERR
+    COUNTY tracts the heatmap actually covers, rank correlation is
+    +0.27 with p=0.36 -- on 14 points that is not
+    distinguishable from chance, and it has swung sign between model
+    versions (-0.11 under the earlier linear winner). Kerr's tracts are
+    demographically similar and were all severely hit; what actually
+    separated them was proximity to the Guadalupe River, which is
+    hydrology the model never sees. Treat this layer as a coarse
+    demographic-vulnerability backdrop. It must NOT be read as 'which
+    parts of Kerr County flooded' -- that is the physics engine's job,
+    and this layer carries no information about it.
+
+  * MODEST ABSOLUTE SKILL. Mean Spearman ~0.34 is a real but weak
+    signal. This output is a prioritisation hint, never an authority for
+    who gets help. Per PRD Design Principle 3 it must be shown alongside
+    the citation-grounded critique, never on its own.
+
+  * VALIDATED SCOPE (adopted 2026-09-06; see
+    logs/model_tests_followup.log Section 7 for the full statement).
+    Measured like-for-like inside each fold, this model ranks WORSE in
+    nonmetro tracts (Spearman 0.238, RUCC 4-9) than metro (0.347).
+    Kerr County is RUCC 4, so THE DEPLOYMENT TARGET SITS IN THE MODEL'S
+    WEAKER STRATUM. That gap survived a paired, size-matched audit
+    holding the incident constant (p=0.019) and is stable across
+    sample-size floors of 30/50/100 rural tracts per fold -- it is a
+    real property of the model, not small-sample noise. Use for
+    within-incident RELATIVE shading only; never as a magnitude, a
+    cross-incident comparison, or a flood-extent claim.
+
+  * CALIBRATION IS BROKEN AND WAS NOT REPAIRED (Test 2). Predictions
+    run ~4x low, and the calibration curve is NON-MONOTONIC: decile 1
+    carries the second-highest median outcome of any decile. An
+    isotonic wrapper was fitted and REJECTED for making RMSE worse
+    (18.455 -> 21.469). The worst misses are dense urban tracts
+    (Harris County, DR-4781: under 1 per 1,000 predicted against an
+    actual 186-265) -- a magnitude failure, not a ranking failure,
+    consistent with a model that has no hydrological input.
+
+  * ABSTENTION RULE IS ACTIVE (Test 6). Median imputation is unsafe
+    here -- one missing feature drops rank correlation to 0.58, three
+    to 0.11 -- so a tract is scored only with complete features
+    (max_missing_features=0). Footprints failing this carry
+    weight=null and score_source="insufficient_data" and MUST NOT be
+    rendered as zero. Currently fires on 0 of 14 Kerr tracts.
+
+  * A RURAL-UPWEIGHTING FIX WAS CONSIDERED AND DECLINED, not
+    overlooked. Reweighting adds no information (it amplifies the
+    3,160 rural rows already held), and the real-data lever is nearly
+    exhausted in scope. Design retained, unexecuted, in
+    logs/proposed_rural_experiment.log.
+
+==============================================================================
+SECTION 7 FLAGS -- items referred back rather than worked around
+==============================================================================
+
+  1. CENSUS API KEY GATE (blocking for api.census.gov only, worked
+     around legitimately, not silently). Every api.census.gov query --
+     including the credential-free example in the task spec -- now
+     returns a 'Missing Key' interstitial. Rather than sign up for a
+     key (a Section 7 stop condition), the identical ACS 5-year
+     estimates were taken from the ungated table-based Summary Files on
+     www2.census.gov, a host the spec's own network check requires.
+     ACTION FOR THE USER: if you want the REST path, request a free key
+     at api.census.gov/data/key_signup.html and set CENSUS_API_KEY;
+     scripts/pull_acs.py already detects it.
+
+  2. NOT ATTEMPTED, as instructed: camp footprints (KCAD / paid
+     aggregator), AAR corpus PDFs, and all gated mobility data
+     (Cuebiq / SafeGraph / Veraset). These remain separate manual tasks.
+
+  3. The 'Demographic Risk Model + Weighted-Footprint Heatmap' addendum
+     is not present in this repository. Section 4.3's property schema
+     was taken from the inline definition in the task spec itself
+     ({weight, feature_id, score_source, citation_ids}); the ACS/SVI
+     variable pairing was chosen to span the standard SVI themes.
+     Worth confirming against the addendum before the UI consumes this.
+
+==============================================================================
+FINAL CHECKPOINT -- heatmap output
+==============================================================================
+
+  output: output/demographic_risk.geojson
+  features: 8,795 footprint centroids (Point)
+  tracts covered: 14 of 14 Kerr County tracts
+  score_source: model:mlp_h16_d0.5_wd0.01
+  held-out incident: DR-4879 (the July 2025 Kerr County flood -- predictions are out-of-sample)
+
+  weight distribution:
+    min  = 0.000015
+    max  = 0.267493
+    mean = 0.003056
+    std  = 0.007822
+    sum  = 26.8791  (equals the sum of the 14 tract scores --
+           the area-weighted split conserves total risk mass)
+
+  SPOT-CHECK (5 sample features)
+    building:osm:way/46203177
+      weight=0.078742  coords=[-99.0908295, 29.9814102]
+      score_source=model:mlp_h16_d0.5_wd0.01
+      citation_ids=['openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879', 'cdc-svi:2022:48265960102', 'acs:2019-2023-5yr:48265960102', 'osm:way/46203177']
+    building:osm:way/46203271
+      weight=0.043267  coords=[-99.0900046, 29.9802268]
+      score_source=model:mlp_h16_d0.5_wd0.01
+      citation_ids=['openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879', 'cdc-svi:2022:48265960102', 'acs:2019-2023-5yr:48265960102', 'osm:way/46203271']
+    building:osm:way/81191227
+      weight=0.065646  coords=[-99.1432414, 30.0507373]
+      score_source=model:mlp_h16_d0.5_wd0.01
+      citation_ids=['openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879', 'cdc-svi:2022:48265960500', 'acs:2019-2023-5yr:48265960500', 'osm:way/81191227']
+    building:osm:way/99288575
+      weight=0.011265  coords=[-99.256651, 30.0715421]
+      score_source=model:mlp_h16_d0.5_wd0.01
+      citation_ids=['openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879', 'cdc-svi:2022:48265960304', 'acs:2019-2023-5yr:48265960304', 'osm:way/99288575']
+    building:osm:way/102923832
+      weight=0.001114  coords=[-99.1700468, 30.0624252]
+      score_source=model:mlp_h16_d0.5_wd0.01
+      citation_ids=['openfema:IndividualsAndHouseholdsProgramValidRegistrations:DR-4879', 'cdc-svi:2022:48265960200', 'acs:2019-2023-5yr:48265960200', 'osm:way/102923832']
+
