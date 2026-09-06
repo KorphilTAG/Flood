@@ -199,7 +199,8 @@ router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(get_stor
 @router.get("")
 def list_runs(store: Any = Depends(get_store)) -> list[dict[str, Any]]:
     """List run manifests with only summary keys."""
-    manifests = store.list()
+    # Newest first, so clients that default to the first entry get the latest run.
+    manifests = sorted(store.list(), key=lambda m: str(m.get("created_at", "")), reverse=True)
     allowed_keys = ("run_id", "created_at", "mode", "scenario", "time", "members")
     return [{k: m[k] for k in allowed_keys if k in m} for m in manifests]
 

@@ -342,6 +342,15 @@ def test_overlay_route(client: TestClient) -> None:
     assert -90.0 <= south < north <= 90.0
 
 
+def test_verifier_static_is_revalidated(client: TestClient) -> None:
+    """Verifier assets carry Cache-Control: no-cache so browsers revalidate edited scripts."""
+    resp = client.get("/verifier/app.js")
+    if resp.status_code == 404:
+        pytest.skip("verifier static directory not mounted in this environment")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+
+
 def test_cors_for_map_clients(client: TestClient) -> None:
     """A front end on another origin can read JSON, load overlays as WebGL textures and see the bounds headers."""
     origin = "http://localhost:3000"

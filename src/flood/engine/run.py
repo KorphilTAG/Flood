@@ -34,6 +34,25 @@ from flood.timing import StageTimer
 logger = logging.getLogger("flood.run")
 
 
+_CUBE_CACHE: dict[str, HandCube] = {}
+_CUBE_LOCK = threading.Lock()
+
+
+def load_cube_shared(cube_dir: Path) -> HandCube:
+    """One HandCube per cube directory per process.
+
+    The cube is read-only and about 1.2 GB for the reference corridor; every run of the
+    same scenario shares it instead of loading its own copy.
+    """
+    key = str(Path(cube_dir).resolve())
+    with _CUBE_LOCK:
+        cube = _CUBE_CACHE.get(key)
+        if cube is None:
+            cube = HandCube.load(cube_dir)
+            _CUBE_CACHE[key] = cube
+        return cube
+
+
 @dataclass(frozen=True)
 class ResolvedQuery:
     """Snapped and validated query."""
@@ -43,11 +62,6 @@ class ResolvedQuery:
     p_internal: datetime
     horizon_minutes: int
     requested: dict[str, str]
-
-
-def _parse_compact(name: str) -> datetime:
-    """Inverse of the product directory timestamp: 20250704T0945Z -> aware UTC datetime."""
-    return datetime.strptime(name, "%Y%m%dT%H%MZ").replace(tzinfo=timezone.utc)
 
 
 def _parse_compact(name: str) -> datetime:
@@ -698,7 +712,7 @@ class Run:
         run_json_path = run_dir / "run.json"
 
         cube_dir = data_dir / "cube" / scenario.scenario_id
-        cube = HandCube.load(cube_dir)
+        cube = load_cube_shared(cube_dir)
         store = load_forcing_store(scenario, data_dir)
 
         if run_json_path.exists():
@@ -763,7 +777,7 @@ class Run:
             raise FileNotFoundError(f"Scenario file for {scenario_id} could not be located")
 
         cube_dir = data_dir / "cube" / scenario_id
-        cube = HandCube.load(cube_dir)
+        cube = load_cube_shared(cube_dir)
         store = load_forcing_store(scenario, data_dir)
 
         return cls(
