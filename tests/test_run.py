@@ -92,6 +92,8 @@ def test_fixture_run_state_and_products(mini_scenario, mini_data_dir, tmp_path):
     assert depth_tif.exists()
     assert reaches_parquet.exists()
     assert gauges_parquet.exists()
+    # time_to_exceedance is written by tte(write=True), not by state(write=True)
+    run.tte("2025-01-01T04:00:00Z", write=True)
     assert tte_tif.exists()
 
     # Reach table check

@@ -89,6 +89,42 @@ def run_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_prewarm(args: argparse.Namespace) -> int:
+    """Precompute and write products for a grid of (p, t) pairs so the demo serves from disk."""
+    from datetime import timedelta
+    from flood.engine.run import RunStore
+    from flood.timegrid import parse_iso, snap_p, to_iso
+
+    store = RunStore(runs_dir=args.runs_dir, data_dir=args.data_dir)
+    run = store.get(args.run_id)
+    horizons = [int(h) for h in str(args.horizons).split(",") if h.strip()]
+    p = snap_p(parse_iso(args.p_from))
+    p_to = parse_iso(args.p_to)
+    n = 0
+    while p <= p_to:
+        for h in horizons:
+            t = p + timedelta(minutes=h)
+            if t > run.record_end:
+                continue
+            _, resp = run.state(p, t, write=True)
+            n += 1
+            print(f"{to_iso(p)} +{h:>3} min  cache={resp['cache']:<11} total={resp['compute_ms']['total']} ms", flush=True)
+        if args.tte:
+            run.tte(p, write=True)
+            print(f"{to_iso(p)} time_to_exceedance written", flush=True)
+        p += timedelta(minutes=int(args.p_step_min))
+    if args.hindsight_from and args.hindsight_to:
+        t = snap_p(parse_iso(args.hindsight_from))
+        t_to = parse_iso(args.hindsight_to)
+        while t <= t_to:
+            _, resp = run.state("hindsight", t, write=True)
+            n += 1
+            print(f"hindsight {to_iso(t)}  cache={resp['cache']:<11} total={resp['compute_ms']['total']} ms", flush=True)
+            t += timedelta(minutes=int(args.t_step_min))
+    print(f"prewarmed {n} states for {run.run_id}")
+    return 0
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     """Register 'run' subcommands."""
     run_parser = subparsers.add_parser("run", help="Manage and execute runs")
@@ -119,3 +155,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     list_parser.add_argument("--runs-dir", default="runs", help="Runs directory (default: runs)")
     list_parser.add_argument("--data-dir", default="data", help="Data directory (default: data)")
     list_parser.set_defaults(func=run_list)
+
+    pre = run_sub.add_parser("prewarm", help="Precompute products for a grid of (p, t) so the demo serves from disk")
+    pre.add_argument("run_id")
+    pre.add_argument("--p-from", required=True, help="first cutoff, contract ISO")
+    pre.add_argument("--p-to", required=True, help="last cutoff, contract ISO")
+    pre.add_argument("--p-step-min", default=5, type=int)
+    pre.add_argument("--horizons", default="0,30,60,120", help="comma-separated minutes")
+    pre.add_argument("--hindsight-from", default=None)
+    pre.add_argument("--hindsight-to", default=None)
+    pre.add_argument("--t-step-min", default=15, type=int)
+    pre.add_argument("--tte", action="store_true", help="also write time_to_exceedance per cutoff (slow: one mapping per 5-minute step)")
+    pre.add_argument("--runs-dir", default="runs")
+    pre.add_argument("--data-dir", default="data")
+    pre.set_defaults(func=run_prewarm)

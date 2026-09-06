@@ -240,8 +240,48 @@ export function scheduleUpdate() {
 /**
  * Main fetch cycle: GET state then parallel overlay, reaches, gauges
  */
+let inFlight = false;
+let rerunPending = false;
+let lastBucketKey = null;
+
+/**
+ * Key of the snapped (p, t) request the current settings would produce.
+ * Clock ticks that stay inside the same 5-minute buckets do not trigger fetches.
+ */
+function bucketKey() {
+  if (!state.runId || !state.t) return null;
+  const { p, t } = deriveCutoffAndValid(state.t, state.mode, state.horizonMin, state.lagMin);
+  if (!p || !t) return null;
+  const step = 5 * 60 * 1000;
+  const floor = (iso) => new Date(Math.floor(new Date(iso).getTime() / step) * step).toISOString();
+  const nearest = (iso) => new Date(Math.round(new Date(iso).getTime() / step) * step).toISOString();
+  return `${state.runId}|${state.mode}|${floor(p)}|${nearest(t)}|${state.band}|${state.showProb}|${state.showDiff}`;
+}
+
+/**
+ * At most one fetch cycle in flight. Requests arriving while one runs coalesce into a
+ * single rerun afterwards, so the server never sees a queue of stale computations.
+ */
 export async function executeFetchCycle() {
   if (!state.runId || !state.t) return;
+  if (inFlight) {
+    rerunPending = true;
+    return;
+  }
+  inFlight = true;
+  rerunPending = false;
+  lastBucketKey = bucketKey();
+  try {
+    await runFetchCycle();
+  } finally {
+    inFlight = false;
+    const again = rerunPending && bucketKey() !== lastBucketKey;
+    rerunPending = false;
+    if (again) scheduleUpdate();
+  }
+}
+
+async function runFetchCycle() {
 
   if (currentAbortController) {
     currentAbortController.abort();
@@ -887,8 +927,10 @@ export function handleClockMessage(msg) {
   // Update timeline slider unless dragging
   updateTimelineSlider(msg);
 
-  // Trigger debounced cycle
-  scheduleUpdate();
+  // Fetch only when the snapped (p, t) actually changes
+  if (bucketKey() !== lastBucketKey) {
+    scheduleUpdate();
+  }
 }
 
 /**

@@ -146,6 +146,11 @@ def render_overlay_png(
     src_arr = np.where(array == NODATA, np.nan, array).astype(np.float32)
     dst_arr = np.full((out_h, out_w), np.nan, dtype=np.float32)
 
+    # When the output pixel is coarser than the grid, keep the maximum depth inside each
+    # output pixel instead of averaging: bilinear resampling of a river one or two cells
+    # wide onto 30 m pixels blurs it below MIN_DEPTH_M and it vanishes at corridor zoom.
+    out_px_m = abs(scaled_transform.a)
+    coarse = out_px_m > grid.resolution_m * 1.5
     rasterio.warp.reproject(
         source=src_arr,
         destination=dst_arr,
@@ -153,10 +158,18 @@ def render_overlay_png(
         src_crs=grid.crs,
         dst_transform=scaled_transform,
         dst_crs="EPSG:3857",
-        resampling=rasterio.warp.Resampling.bilinear,
+        resampling=rasterio.warp.Resampling.max if coarse else rasterio.warp.Resampling.bilinear,
         src_nodata=np.nan,
         dst_nodata=np.nan,
     )
+    if coarse:
+        # Dilate wet pixels by one so a one-pixel river stays legible; the legend still
+        # shows the true maximum depth of the underlying cells.
+        from scipy.ndimage import maximum_filter
+
+        filled = np.where(np.isnan(dst_arr), -1.0, dst_arr).astype(np.float32)
+        dilated = maximum_filter(filled, size=3)
+        dst_arr = np.where(dilated >= MIN_DEPTH_M, dilated, dst_arr).astype(np.float32)
 
     # Colour mapping
     thrs = [t for t, _ in ramp]

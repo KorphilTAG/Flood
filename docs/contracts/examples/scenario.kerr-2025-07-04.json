@@ -127,7 +127,7 @@
     },
     "routing": {
       "method": "muskingum_cunge",
-      "dt_minutes": 1
+      "dt_minutes": 5
     },
     "roughness": {
       "manning_n_scale": 1.0

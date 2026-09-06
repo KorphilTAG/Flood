@@ -8,6 +8,7 @@ import json
 import logging
 from pathlib import Path
 import shutil
+import threading
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,7 @@ from flood.engine.routing import route
 from flood.interfaces import MEMBERS, RoutedSeries, StateArrays, TimeGridError
 from flood.products.manifest import build_manifest, config_hash, make_run_id, merge_forcing
 from flood.products.raster import write_depth_cog, write_tte_cog
+import rasterio
 from flood.products.tables import build_gauges, build_reaches
 from flood.scenario import load_scenario
 from flood.timegrid import check_pair, grid_range, parse_iso, snap_p, snap_t, to_compact, to_iso
@@ -85,6 +87,11 @@ class Run:
 
         # In-memory LRU cache of RoutedSeries, maxsize=8
         self._routed_cache: OrderedDict[datetime, RoutedSeries] = OrderedDict()
+        # One heavy computation at a time per run: concurrent requests queue instead of
+        # each allocating full-grid arrays. Small LRU of finished states and reach tables.
+        self._lock = threading.RLock()
+        self._state_cache: OrderedDict[tuple, tuple[StateArrays, dict]] = OrderedDict()
+        self._reaches_cache: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
 
     def resolve(self, p: datetime | str | None, t: datetime | str) -> ResolvedQuery:
         """Resolve, snap, and validate a (p, t) query against the scenario record and horizon."""
@@ -134,6 +141,13 @@ class Run:
             self._routed_cache.move_to_end(p_dt)
             return self._routed_cache[p_dt]
 
+        with self._lock:
+            if p_dt in self._routed_cache:
+                self._routed_cache.move_to_end(p_dt)
+                return self._routed_cache[p_dt]
+            return self._route_uncached(p_dt)
+
+    def _route_uncached(self, p_dt: datetime) -> RoutedSeries:
         view = ParquetForcingView(
             self.scenario,
             self.store,
@@ -182,8 +196,52 @@ class Run:
         return self.run_dir / rel
 
     def state(self, p: datetime | str | None, t: datetime | str, write: bool = False) -> tuple[StateArrays, dict]:
-        """Compute state arrays and contract state response, with optional idempotent writing to disk."""
+        """State arrays and contract response for (p, t).
+
+        Order of preference: in-memory LRU of finished states; precomputed depth.tif on
+        disk (loaded, not recomputed); full computation. All under the run lock so a burst
+        of requests never runs several full-grid computations at once.
+        """
         res = self.resolve(p, t)
+        key = (res.mode, res.p_internal, res.t)
+        with self._lock:
+            cached = self._state_cache.get(key)
+            if cached is not None and not write:
+                self._state_cache.move_to_end(key)
+                arrays, resp = cached
+                resp = dict(resp)
+                resp["cache"] = "hit"
+                resp["compute_ms"] = {**resp["compute_ms"], "total": 0}
+                return arrays, resp
+            raster_path = self.product_path("raster", res.p if res.mode != "hindsight" else "hindsight", res.t)
+            if not write and raster_path.exists() and res.p_internal not in self._routed_cache:
+                arrays, resp = self._load_state_from_disk(res, raster_path)
+            else:
+                arrays, resp = self._compute_state(res, write)
+            self._state_cache[key] = (arrays, resp)
+            while len(self._state_cache) > 6:
+                self._state_cache.popitem(last=False)
+            return arrays, resp
+
+    def _load_state_from_disk(self, res: ResolvedQuery, raster_path: Path) -> tuple[StateArrays, dict]:
+        """Read a precomputed depth.tif into StateArrays; about a second instead of tens."""
+        t0 = datetime.now()
+        with rasterio.open(raster_path) as ds:
+            bands = ds.read().astype(np.float32)
+            nodata = ds.nodata if ds.nodata is not None else -9999.0
+        bands[bands == nodata] = np.nan
+        ms = int((datetime.now() - t0).total_seconds() * 1000)
+        stages_ms = {"state_estimation": 0, "boundary_forecast": 0, "routing": 0, "hand_mapping": 0, "reduce": 0, "write": 0, "total": ms}
+        arrays = StateArrays(
+            p=res.p, t=res.t,
+            depth_mid=bands[0], depth_low=bands[1], depth_high=bands[2],
+            velocity_ms=bands[3], hazard_dv=bands[4], prob_inundated=bands[5],
+            compute_ms=stages_ms,
+        )
+        return arrays, self._build_response(res, stages_ms, "precomputed")
+
+    def _compute_state(self, res: ResolvedQuery, write: bool) -> tuple[StateArrays, dict]:
+        """Full computation: routing (cached per cutoff), three member mappings, reduction, optional writes."""
         p_internal = res.p_internal
         t_target = res.t
 
@@ -275,10 +333,9 @@ class Run:
                             gauges_path.parent.mkdir(parents=True, exist_ok=True)
                             gauges_df.to_parquet(gauges_path, index=False)
 
-                        tte_path = self.product_path("time_to_exceedance", res.p)
-                        if not tte_path.exists():
-                            tte_arr = self.tte(res.p, write=False)
-                            write_tte_cog(tte_path, self.cube.grid, tte_arr)
+                        # time_to_exceedance is produced by tte(p, write=True) on its own route or
+                        # by prewarm --tte: it maps every 5-minute step of the horizon and must not
+                        # stall a raster or state request.
 
         stages_ms = {
             "state_estimation": 0,
@@ -300,7 +357,9 @@ class Run:
             t=to_iso(res.t),
             cache=cache_status,
         )
+        return arrays, self._build_response(res, stages_ms, cache_status)
 
+    def _build_response(self, res: ResolvedQuery, stages_ms: dict, cache_status: str) -> dict:
         base = f"{self.url_base}/{self.run_id}"
         t_iso = to_iso(res.t)
 
@@ -340,11 +399,27 @@ class Run:
         }
 
         validate_json("state-response", response)
-        return arrays, response
+        return response
 
     def reaches(self, p: datetime | str | None, t: datetime | str) -> pd.DataFrame:
-        """Compute reach DataFrame for query (p, t)."""
+        """Reach DataFrame for query (p, t): from memory, else from the written Parquet, else computed."""
         res = self.resolve(p, t)
+        key = (res.mode, res.p_internal, res.t)
+        with self._lock:
+            if key in self._reaches_cache:
+                self._reaches_cache.move_to_end(key)
+                return self._reaches_cache[key]
+            path = self.product_path("reaches", res.p if res.mode != "hindsight" else "hindsight", res.t)
+            if path.exists() and res.p_internal not in self._routed_cache:
+                df = pd.read_parquet(path)
+            else:
+                df = self._compute_reaches(res)
+            self._reaches_cache[key] = df
+            while len(self._reaches_cache) > 6:
+                self._reaches_cache.popitem(last=False)
+            return df
+
+    def _compute_reaches(self, res: ResolvedQuery) -> pd.DataFrame:
         routed = self.routed(res.p_internal)
         q_at_t = routed.at(res.t)
         fids = routed.feature_ids
@@ -362,8 +437,13 @@ class Run:
             p_dt = parse_iso(p) if isinstance(p, str) else p
             p_internal = snap_p(p_dt)
 
-        routed = self.routed(p_internal)
-        return build_gauges(self, routed, p_internal)
+        if p_internal != self.record_end:
+            path = self.product_path("gauges", p_internal)
+            if path.exists() and p_internal not in self._routed_cache:
+                return pd.read_parquet(path)
+        with self._lock:
+            routed = self.routed(p_internal)
+            return build_gauges(self, routed, p_internal)
 
     def tte(self, p: datetime | str, write: bool = False) -> np.ndarray:
         """Compute time-to-exceedance float32 array [3, H, W] for cutoff p."""
@@ -371,6 +451,14 @@ class Run:
         p_snapped = snap_p(p_dt)
         t_end = min(p_snapped + pd.Timedelta(minutes=self.max_horizon_minutes), self.record_end)
         taus = grid_range(p_snapped, t_end)
+
+        existing = self.product_path("time_to_exceedance", p_snapped)
+        if existing.exists():
+            with rasterio.open(existing) as ds:
+                arr = ds.read().astype(np.float32)
+                nodata = ds.nodata if ds.nodata is not None else -9999.0
+            arr[arr == nodata] = np.nan
+            return arr
 
         routed = self.routed(p_snapped)
         fids = routed.feature_ids
