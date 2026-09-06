@@ -85,6 +85,22 @@ class Run:
         self.record_end = pd.to_datetime(scenario.hydrology.record.end, utc=True).to_pydatetime()
         self.max_horizon_minutes = int(manifest.get("time", {}).get("max_horizon_minutes", 360))
 
+        # Conveyance scale: a per-catchment field fitted at the gauges when the config asks
+        # for it, else the scalar Manning n scale. Written once to calibration.json.
+        roughness = (manifest.get("forcing", {}).get("config", {}) or {}).get("roughness") or {}
+        self.n_scale_default = float(roughness.get("manning_n_scale", 1.0))
+        self.n_scale_field = None
+        if roughness.get("gauge_calibration"):
+            from flood.engine.calibration import build_conveyance_field
+
+            self.n_scale_field = build_conveyance_field(cube, store.usgs, scenario, self.n_scale_default)
+            calib_path = self.run_dir / "calibration.json"
+            if not calib_path.exists():
+                try:
+                    calib_path.write_text(json.dumps(self.n_scale_field.as_dict(), indent=2), encoding="utf-8")
+                except OSError:
+                    pass
+
         # In-memory LRU cache of RoutedSeries, maxsize=8
         self._routed_cache: OrderedDict[datetime, RoutedSeries] = OrderedDict()
         # One heavy computation at a time per run: concurrent requests queue instead of
@@ -130,6 +146,11 @@ class Run:
             requested=requested,
         )
 
+    @property
+    def n_scale(self):
+        """What map_member takes: the calibrated field when present, else the scalar scale."""
+        return self.n_scale_field if self.n_scale_field is not None else self.n_scale_default
+
     def routed(self, p_internal: datetime) -> RoutedSeries:
         """Fetch or compute the RoutedSeries for p_internal from an LRU cache of size 8."""
         if p_internal.tzinfo is None:
@@ -164,6 +185,7 @@ class Run:
             members=MEMBERS,
             max_horizon_minutes=self.max_horizon_minutes,
             warmup_minutes=360,
+            n_scale_field=self.n_scale_field,
         )
 
         self._routed_cache[p_dt] = routed_series
@@ -295,8 +317,7 @@ class Run:
             with st.stage("hand_mapping"):
                 q_at_t = routed_series.at(t_target)
                 fids = routed_series.feature_ids
-                roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-                n_scale = float(roughness.get("manning_n_scale", 1.0))
+                n_scale = self.n_scale
 
                 q_low = {fid: float(q_at_t[0, i]) for i, fid in enumerate(fids)}
                 low_mf = map_member(self.cube, q_low, n_scale=n_scale, with_velocity=False)
@@ -425,8 +446,7 @@ class Run:
         q_at_t = routed.at(res.t)
         fids = routed.feature_ids
         q_mid = {fid: float(q_at_t[1, i]) for i, fid in enumerate(fids)}
-        roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-        n_scale = float(roughness.get("manning_n_scale", 1.0))
+        n_scale = self.n_scale
         mid_mf = map_member(self.cube, q_mid, n_scale=n_scale, with_velocity=True)
         return build_reaches(self, routed, res.t, mid_mf)
 
@@ -463,8 +483,7 @@ class Run:
 
         routed = self.routed(p_snapped)
         fids = routed.feature_ids
-        roughness = self.manifest["forcing"]["config"].get("roughness") or {}
-        n_scale = float(roughness.get("manning_n_scale", 1.0))
+        n_scale = self.n_scale
 
         series = []
         for tau in taus:
@@ -497,10 +516,10 @@ class Run:
         runs_dir = Path(runs_dir)
         data_dir = Path(data_dir)
 
-        defaults = scenario.forcing_defaults.model_dump(mode="json", exclude_none=True)
+        defaults = scenario.forcing_defaults.model_dump(mode="json", exclude_none=True, by_alias=True)
         merged = merge_forcing(defaults, overrides)
         fc = ForcingConfig.model_validate(merged)
-        cfg_dict = fc.model_dump(mode="json", exclude_none=True)
+        cfg_dict = fc.model_dump(mode="json", exclude_none=True, by_alias=True)
         cfg_hash = config_hash(cfg_dict)
 
         run_id = make_run_id(scenario.scenario_id, mode, cfg_hash)

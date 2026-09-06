@@ -93,7 +93,10 @@
     },
     "roughness": {
       "type": "object", "additionalProperties": false,
-      "properties": { "manning_n_scale": { "type": "number", "exclusiveMinimum": 0, "default": 1.0 } }
+      "properties": {
+        "manning_n_scale": { "type": "number", "exclusiveMinimum": 0, "default": 1.0 },
+        "gauge_calibration": { "type": "boolean", "default": false }
+      }
     },
     "scenario_overrides": {
       "type": "array",
