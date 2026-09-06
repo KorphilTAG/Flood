@@ -7,6 +7,7 @@ import {
   fixtureDepth,
   evidenceCoverage,
   objectivePresets,
+  observationPresets,
   type Operations,
 } from '../lib/operations.ts';
 const time = Date.parse('2025-01-01T12:00:00Z');
@@ -188,4 +189,29 @@ void test('Objective presets follow specialty and selected area', () => {
   assert.ok(medical.some((p) => /medical/i.test(p.text)));
   assert.ok(boat.every((p) => p.text.startsWith('Riverside:')));
   assert.notDeepEqual(boat, medical);
+});
+
+void test('Field quick responses remain unverified and preserve uncertainty until reviewed', () => {
+  const option = observationPresets('Assistance needs', 'B–12').find(
+    (o) => o.label === 'No people visible',
+  )!;
+  assert.match(option.text, /does not establish/);
+  assert.match(option.text, /B–12/);
+  const state = operationsReducer(empty(), {
+    type: 'report',
+    report: {
+      id: 'quick1',
+      teamId: 'team1',
+      sectorId: 'b12',
+      kind: 'Assistance needs',
+      text: option.text,
+      confidence: 'Medium',
+      createdAt: time,
+    },
+  });
+  assert.equal(state.reports[0].verifiedAt, undefined);
+  assert.equal(evidenceCoverage(state, 'b12', time, []).verified, 0);
+  assert.ok(
+    observationPresets('Hazard', 'A–22').some((o) => /crossing/i.test(o.text)),
+  );
 });

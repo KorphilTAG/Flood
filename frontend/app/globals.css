@@ -2704,3 +2704,541 @@ textarea {
     min-height: 55px;
   }
 }
+
+/* Regional map and a single review/assignment workflow. */
+.ops-app {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+  --map-side: clamp(460px, calc(100dvh - 345px), 850px);
+}
+.view-tabs {
+  min-height: 100dvh;
+  height: auto;
+}
+.command-view {
+  padding: 0 20px 12px;
+}
+.command-grid {
+  flex: none;
+  grid-template-columns: var(--map-side) minmax(340px, 380px);
+  justify-content: center;
+  gap: 18px;
+  min-height: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1260px;
+}
+.map-workspace {
+  overflow: visible;
+}
+.map-incident {
+  height: 46px;
+  padding: 4px 0;
+  border-bottom: 0;
+}
+.map-incident h1 {
+  font-size: 17px;
+}
+.map-incident .overline {
+  font-size: 10px;
+}
+.map-incident > span {
+  display: none;
+}
+.map-module {
+  min-width: 0;
+  width: 100%;
+}
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  color: var(--muted-text);
+}
+.map-toolbar > span {
+  margin-left: auto;
+  font-size: 10px;
+}
+.map-toolbar .map-mode {
+  background: var(--card);
+  border-color: var(--border);
+}
+.map-toolbar .map-mode button {
+  font-size: 11px;
+  color: var(--foreground);
+  padding: 6px 10px;
+}
+.map-toolbar .map-mode button[aria-pressed='true'] {
+  background: #3b5b70;
+}
+.map-toolbar > button {
+  min-height: 28px;
+  min-width: 28px;
+}
+.map-layer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 0;
+  min-height: 36px;
+  padding: 6px 0 9px;
+}
+.map-layer-controls label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.map-layer-controls [data-slot='checkbox'] {
+  border-radius: 2px;
+  border-color: #7b8e9c;
+}
+.map-module .map-panel {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  min-height: 0;
+  flex: none;
+  border: 1px solid var(--border);
+}
+.map-module .map-controls {
+  top: 14px;
+  right: 12px;
+}
+.map-selection-label {
+  position: absolute;
+  bottom: 28px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  background: #1b2e3beb;
+  border-left: 3px solid #4da8d6;
+  padding: 8px 10px;
+  color: #e2edf4;
+  font-size: 12px;
+  pointer-events: none;
+}
+.map-selection-label small {
+  display: block;
+  font-size: 9px;
+  color: #b0c1cc;
+}
+.map-caption {
+  min-height: 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  color: var(--muted-text);
+}
+.map-caption a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.priority-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+}
+.area-row.is-map-hovered {
+  background: #51452c;
+  border-left-color: #e6ba59;
+}
+.area-row.is-selected {
+  background: #20394a;
+  border-left: 3px solid #65b8e3;
+}
+.priority-panel .selected-map-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.priority-panel .selected-map-summary > div:first-child {
+  grid-column: 1 / -1;
+}
+.priority-panel .selected-map-summary > div:first-child strong {
+  font-size: 14px;
+}
+.priority-panel .selected-map-summary strong {
+  font-size: 20px;
+}
+.priority-panel .selected-map-summary .coverage-summary {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 3px;
+}
+.priority-panel .selected-map-summary .coverage-summary strong {
+  font-size: 11px;
+}
+.side-tools > .overline {
+  display: none;
+}
+.side-tools {
+  border-top: 0;
+  padding: 12px 16px;
+  gap: 10px;
+}
+.workflow-summary {
+  font-size: 12px;
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+.side-tools .action-button {
+  width: 100%;
+  min-height: 42px;
+  justify-content: center;
+}
+.time-panel {
+  flex: none;
+  min-height: 118px;
+  margin: 10px auto 0;
+  padding: 12px 18px;
+  width: 100%;
+  max-width: 1248px;
+}
+.time-controls {
+  flex-wrap: nowrap;
+}
+.time-note {
+  font-size: 10px;
+}
+.area-dialog {
+  width: min(1160px, 95vw) !important;
+  max-width: 1160px !important;
+  padding: 22px !important;
+}
+.area-dialog .inspection-metrics {
+  display: none;
+}
+.area-dialog .detail-content {
+  min-height: 310px;
+  padding: 20px 0 0;
+  gap: 18px;
+}
+.area-dialog .detail-content > section:nth-child(3) .evidence-item {
+  width: calc(33.333% - 14px);
+  padding: 12px;
+}
+.area-dialog .evidence-item p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.area-dialog .evidence-item small {
+  font-size: 11px;
+}
+.area-dialog .detail-content .caution-note {
+  margin-top: 0;
+  padding: 10px;
+}
+.workflow-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px !important;
+}
+.workflow-footer > span {
+  font-size: 11px;
+  color: var(--muted-text);
+}
+.assignment-content {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 30px;
+  padding-top: 22px;
+}
+.assignment-context {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 18px;
+  padding: 18px;
+  background: var(--background);
+}
+.assignment-context p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.assignment-context small {
+  color: var(--muted-text);
+}
+.assignment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.assignment-form .form-label {
+  margin: 0;
+}
+.assignment-form .objective-presets {
+  gap: 6px;
+}
+.assignment-form .objective-presets > span {
+  display: none;
+}
+.assignment-form textarea {
+  min-height: 90px;
+  font-size: 14px;
+}
+.assignment-form .dialog-actions {
+  justify-content: end;
+}
+.observation-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.observation-presets button {
+  min-height: 38px;
+  padding: 7px 10px;
+  width: auto;
+  font-size: 13px;
+}
+.observation-presets button[aria-pressed='true'] {
+  background: #304e61;
+  border-color: #9ac7e4;
+}
+/* Two stable task tabs inside the phone; actions stay in reach. */
+.field-view {
+  height: calc(100dvh - 76px);
+  min-height: 0;
+}
+.phone-screen {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 800px;
+}
+.phone-incident {
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+.phone-frame .field-toolbar {
+  padding: 10px 14px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.phone-frame .field-toolbar .overline {
+  font-size: 10px;
+}
+.phone-frame .field-toolbar .choice {
+  height: 32px;
+  min-height: 32px;
+}
+.phone-frame .field-sync {
+  gap: 5px;
+}
+.phone-frame .field-sync > span {
+  font-size: 10px;
+}
+.phone-frame .field-sync button {
+  min-height: 28px;
+  font-size: 11px;
+  padding: 4px 6px;
+  justify-content: start;
+}
+.field-task-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.field-task-navigation {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 0;
+  padding: 4px 6px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.field-task-navigation [data-slot='tabs-trigger'] {
+  flex: 1;
+  min-height: 36px;
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--muted-text);
+}
+.field-task-navigation [data-active] {
+  color: var(--foreground);
+  background: #2e4353;
+}
+.field-task-tabs > [data-slot='tabs-content'] {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  margin: 0;
+  background: var(--card);
+}
+.field-task-tabs .panel-title {
+  min-height: 32px;
+  padding: 7px 14px;
+}
+.field-task-tabs .panel-title h2 {
+  font-size: 12px;
+}
+.phone-frame .mission-body {
+  padding: 12px 14px 0;
+}
+.phone-frame .mission-body > h2 {
+  font-size: 20px;
+  margin: 7px 0 10px;
+}
+.phone-frame .mission-objective {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.team-details {
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.team-details [data-slot='collapsible-trigger'] {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.phone-frame .field-estimate {
+  padding: 9px 10px;
+  margin-top: 8px;
+}
+.phone-frame .field-estimate strong {
+  font-size: 13px;
+  display: inline;
+  margin-left: 5px;
+}
+.phone-frame .field-estimate p {
+  font-size: 11px;
+  margin-top: 5px;
+}
+.phone-frame .status-block {
+  padding: 12px 14px;
+}
+.phone-frame .status-block > p {
+  display: none;
+}
+.phone-frame .status-block h3 {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.phone-frame .status-buttons {
+  gap: 7px;
+  grid-template-columns: 1fr 1fr;
+}
+.phone-frame .status-buttons button {
+  min-height: 38px;
+  padding: 8px;
+  font-size: 12px;
+}
+.phone-actions {
+  flex-shrink: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 7px;
+  background: var(--background);
+}
+.phone-frame .phone-actions .field-primary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.phone-actions .action-button {
+  font-size: 11px;
+  padding: 7px;
+  gap: 6px;
+}
+.phone-actions > .text-button {
+  font-size: 11px;
+  justify-self: center;
+}
+.phone-frame .field-section {
+  padding: 12px 14px;
+}
+.field-task-tabs .route-step {
+  margin: 12px 0;
+}
+.field-task-tabs .field-section p {
+  font-size: 13px;
+}
+.field-map-dialog {
+  max-width: 640px !important;
+  width: min(640px, 94vw) !important;
+  padding: 18px !important;
+}
+.field-map-dialog .map-module {
+  width: min(100%, calc(90dvh - 215px));
+  margin: auto;
+}
+.field-map-dialog .map-toolbar {
+  height: 28px;
+}
+.field-map-dialog .map-toolbar > span {
+  margin-left: 0;
+}
+.field-map-dialog .map-layer-controls {
+  gap: 8px;
+}
+.field-map-dialog .map-layer-controls label {
+  font-size: 10px;
+}
+@media (max-width: 1000px) {
+  .ops-app {
+    --map-side: calc(100vw - 405px);
+  }
+  .command-view {
+    padding-inline: 12px;
+  }
+  .command-grid {
+    grid-template-columns: minmax(360px, 1fr) 340px;
+    gap: 12px;
+  }
+  .map-incident {
+    height: 52px;
+  }
+  .priority-panel {
+    min-height: 620px;
+  }
+  .time-controls {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 760px) {
+  .command-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .map-workspace {
+    min-height: 0;
+  }
+  .map-module .map-panel {
+    height: auto;
+    min-height: 0;
+  }
+  .priority-panel {
+    margin-top: 0;
+    min-height: 620px;
+  }
+  .assignment-content {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  .assignment-context {
+    display: none;
+  }
+  .area-dialog .detail-content > section:nth-child(3) .evidence-item {
+    width: 100%;
+  }
+  .workflow-footer > span {
+    display: none;
+  }
+  .phone-frame .field-task-tabs .mission-objective {
+    font-size: 14px;
+  }
+}

@@ -14,7 +14,7 @@
     "predev": "node scripts/cesium-assets.mjs",
     "prebuild": "node scripts/cesium-assets.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/operations.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

@@ -1,8 +1,7 @@
 'use client';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import {
   Activity,
-  ArrowLeft,
   ArrowRight,
   Check,
   ChevronRight,
@@ -19,7 +18,6 @@ import {
   ShieldCheck,
   Signal,
   TriangleAlert,
-  Users,
   WifiOff,
   X,
 } from 'lucide-react';
@@ -29,6 +27,11 @@ import OperationalMap from '@/components/operational-map';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@/components/ui/collapsible';
 import {
   Select,
   SelectContent,
@@ -52,10 +55,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  deriveTimes,
   fixtureDepth,
   evidenceCoverage,
   objectivePresets,
+  observationPresets,
   operationsReducer,
   visibleReports,
   type Operations,
@@ -152,10 +155,10 @@ export default function Home() {
     [resourcesOpen, setResourcesOpen] = useState(false),
     [phoneZoom, setPhoneZoom] = useState('100');
   const [clock, setClock] = useState(initialTime),
-    [playing, setPlaying] = useState(false),
-    [projection, setProjection] = useState('nowcast'),
-    [minutes, setMinutes] = useState('60'),
-    [member, setMember] = useState('mid');
+    [playing, setPlaying] = useState(false);
+  const member = 'mid',
+    p = clock,
+    t = clock;
   const [filter, setFilter] = useState('all'),
     [query, setQuery] = useState(''),
     [focus, setFocus] = useState(0),
@@ -167,28 +170,37 @@ export default function Home() {
   const [fieldTeam, setFieldTeam] = useState(mock.teams[1].id),
     [notice, setNotice] = useState(''),
     [activityOpen, setActivityOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false),
-    [assignTeam, setAssignTeam] = useState(''),
+  const [assignTeam, setAssignTeam] = useState(''),
     [objective, setObjective] = useState('');
   const [reportOpen, setReportOpen] = useState(false),
     [reportStage, setReportStage] = useState('edit'),
     [reportType, setReportType] = useState('Access'),
     [reportText, setReportText] = useState(''),
     [reportConfidence, setReportConfidence] = useState('Medium');
+  const [fieldTab, setFieldTab] = useState('assignment'),
+    [fieldMapOpen, setFieldMapOpen] = useState(false),
+    [fieldMapArea, setFieldMapArea] = useState(mock.sectors[1].id),
+    [fieldReportsOpen, setFieldReportsOpen] = useState(false),
+    [hoveredArea, setHoveredArea] = useState<string | null>(null);
   const [plan, setPlan] = useState(''),
     [reviews, setReviews] = useState<
       Record<string, { plan: string; at: number; findings: string[] }>
     >({});
   const selected =
     mock.sectors.find((s) => s.id === selectedId) ?? mock.sectors[0];
-  const { p, t, horizon } = deriveTimes(
-    clock,
-    projection,
-    Number(minutes),
-    start,
-    end,
-  );
   const depth = fixtureDepth(selected.depth, t, initialTime, member);
+  const confirmedHazards = useMemo(
+    () =>
+      operations.reports
+        .filter(
+          (r) =>
+            r.kind === 'Hazard' &&
+            r.verifiedAt !== undefined &&
+            r.verifiedAt <= p,
+        )
+        .map((r) => r.sectorId),
+    [operations.reports, p],
+  );
   const fieldAssignment = operations.assignments.find(
     (a) => a.teamId === fieldTeam,
   );
@@ -230,6 +242,15 @@ export default function Home() {
     selected.name,
   );
   function openDetails(tab: string) {
+    const team =
+      available.find((team) => team.capability === selected.capability) ??
+      available[0];
+    setAssignTeam(team?.id ?? '');
+    setObjective(
+      team
+        ? objectivePresets(team.capability, selected.name)[0].text
+        : selected.next,
+    );
     setInspector(tab);
     setDetailsOpen(true);
   }
@@ -253,16 +274,8 @@ export default function Home() {
   }, [notice]);
   function selectArea(id: string) {
     setSelectedId(id);
+    setFocus((value) => value + 1);
     setPlan('');
-  }
-  function openAssign() {
-    setAssignTeam(
-      available.find((team) => team.capability === selected.capability)?.id ??
-        available[0]?.id ??
-        '',
-    );
-    setObjective(selected.next);
-    setAssignOpen(true);
   }
   function confirmAssignment() {
     if (!assignTeam || !objective.trim()) return;
@@ -278,8 +291,10 @@ export default function Home() {
       },
     });
     setFieldTeam(assignTeam);
-    setAssignOpen(false);
-    setNotice('Assignment recorded. Open Field to view this team’s mission.');
+    setDetailsOpen(false);
+    setNotice(
+      'Assignment approved. The selected team’s Field workspace now has the objective.',
+    );
   }
   function submitReport() {
     dispatch({
@@ -373,8 +388,8 @@ export default function Home() {
           <ShieldCheck size={14} />
           <strong>SIMULATION</strong>
           <span>
-            All flood estimates, people counts, teams, and reports are mock
-            data. No operational services connected.
+            Flood estimates, people counts, teams, and reports are simulated. 3D
+            ground elevation uses historical USGS data.
           </span>
         </div>
         <TabsContent value="command" className="command-view">
@@ -397,57 +412,15 @@ export default function Home() {
               <OperationalMap
                 selected={selectedId}
                 onSelect={selectArea}
+                onHover={setHoveredArea}
                 target={t}
                 initial={initialTime}
                 member={member}
                 focus={focus}
                 mode3d={mode3d}
                 setMode3d={setMode3d}
-                confirmedHazards={operations.reports
-                  .filter(
-                    (r) =>
-                      r.kind === 'Hazard' &&
-                      r.verifiedAt !== undefined &&
-                      r.verifiedAt <= p,
-                  )
-                  .map((r) => r.sectorId)}
+                confirmedHazards={confirmedHazards}
               />
-              <div className="selected-map-summary" aria-live="polite">
-                <div>
-                  <span>SELECTED AREA · {selected.code}</span>
-                  <strong>{selected.name}</strong>
-                </div>
-                <div>
-                  <span>People estimated</span>
-                  <strong>
-                    {selected.people[1]
-                      ? `${selected.people[0]}–${selected.people[1]}`
-                      : 'No estimate'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Water depth · {time(t)}</span>
-                  <strong>{depth.toFixed(1)} m</strong>
-                </div>
-                <div className="coverage-summary" aria-live="polite">
-                  <div>
-                    <strong>{coverage.verified}% verified</strong>
-                    <span>{coverage.modeled}% modeled / unverified</span>
-                  </div>
-                  <Progress
-                    className="coverage-bar"
-                    value={coverage.verified}
-                    aria-label="Verified share of exercise evidence records"
-                  />
-                  <small>
-                    Exercise evidence · {coverage.confirmed}/{coverage.total}{' '}
-                    records verified · live data 0%
-                  </small>
-                  <small>
-                    {coverage.pending} field report(s) awaiting review
-                  </small>
-                </div>
-              </div>
             </div>
             <aside className="priority-panel" aria-label="Priority areas">
               <div className="panel-title">
@@ -499,7 +472,7 @@ export default function Home() {
                 ) : (
                   filtered.map((s) => (
                     <button
-                      className={`area-row ${selectedId === s.id ? 'is-selected' : ''}`}
+                      className={`area-row ${selectedId === s.id ? 'is-selected' : ''} ${hoveredArea === s.id ? 'is-map-hovered' : ''}`}
                       key={s.id}
                       aria-pressed={selectedId === s.id}
                       onClick={() => selectArea(s.id)}
@@ -526,26 +499,55 @@ export default function Home() {
                   ))
                 )}
               </div>
+              <div className="selected-map-summary" aria-live="polite">
+                <div>
+                  <span>SELECTED AREA · {selected.code}</span>
+                  <strong>{selected.name}</strong>
+                </div>
+                <div>
+                  <span>People estimated</span>
+                  <strong>
+                    {selected.people[1]
+                      ? `${selected.people[0]}–${selected.people[1]}`
+                      : 'No estimate'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Water depth · {time(t)}</span>
+                  <strong>{depth.toFixed(1)} m</strong>
+                </div>
+                <div className="coverage-summary" aria-live="polite">
+                  <div>
+                    <strong>{coverage.verified}% verified</strong>
+                    <span>{coverage.modeled}% modeled / unverified</span>
+                  </div>
+                  <Progress
+                    className="coverage-bar"
+                    value={coverage.verified}
+                    aria-label="Verified share of exercise evidence records"
+                  />
+                  <small>
+                    Incident evidence · {coverage.confirmed}/{coverage.total}{' '}
+                    records verified · live feed 0%
+                  </small>
+                  <small>
+                    {coverage.pending} field report(s) awaiting review
+                  </small>
+                </div>
+              </div>
               <div className="side-tools">
                 <span className="overline">SELECTED · {selected.code}</span>
-                <div className="review-shortcuts">
-                  <button onClick={() => openDetails('evidence')}>
-                    Evidence <ChevronRight size={14} />
-                  </button>
-                  <button onClick={() => openDetails('access')}>
-                    Access <ChevronRight size={14} />
-                  </button>
-                  <button onClick={() => openDetails('critique')}>
-                    Plan review <ChevronRight size={14} />
-                  </button>
-                </div>
+                <p className="workflow-summary">
+                  Review observations and access, check a plan, then assign a
+                  team.
+                </p>
                 <button
                   className="action-button primary-action"
-                  disabled={!available.length}
-                  onClick={openAssign}
+                  onClick={() => openDetails('evidence')}
                 >
-                  <Users size={15} />
-                  Assign reconnaissance
+                  <ClipboardList size={16} />
+                  Review & assign
+                  <ArrowRight size={16} />
                 </button>
                 <div className="side-utilities">
                   <button onClick={() => setResourcesOpen(true)}>
@@ -590,52 +592,13 @@ export default function Home() {
                   {playing ? '60× replay' : 'Paused'}
                 </span>
               </div>
-              <div className="forecast-controls">
-                <Choice
-                  label="Time mode"
-                  value={projection}
-                  onChange={setProjection}
-                  options={[
-                    { value: 'nowcast', label: 'Current estimate' },
-                    { value: 'forecast', label: 'Forecast' },
-                    { value: 'stale', label: 'Stale information' },
-                  ]}
-                />
-                {projection !== 'nowcast' && (
-                  <Choice
-                    label={
-                      projection === 'forecast'
-                        ? 'Forecast horizon'
-                        : 'Information lag'
-                    }
-                    value={minutes}
-                    onChange={setMinutes}
-                    options={['30', '60', '120', '240'].map((v) => ({
-                      value: v,
-                      label: `${projection === 'forecast' ? '+' : '−'}${v} min`,
-                    }))}
-                  />
-                )}
-                <Choice
-                  label="Scenario member"
-                  value={member}
-                  onChange={setMember}
-                  options={[
-                    { value: 'low', label: 'Low scenario' },
-                    { value: 'mid', label: 'Mid scenario' },
-                    { value: 'high', label: 'High scenario' },
-                  ]}
-                />
-              </div>
               <span className="time-context">
-                Known at <b>{time(p)}</b> → estimate for <b>{time(t)}</b>
-                {projection !== 'nowcast' && ` (${horizon} min)`}
+                Scenario replay · <b>{time(clock)} CDT</b> · water estimates are
+                simulated
               </span>
             </div>
             <div className="timeline-water">
-              <span>
-                {selected.code} · water-depth trend / {member} exercise
-              </span>
+              <span>{selected.code} · modeled water-depth trend</span>
               <div className="water-trend">
                 {Array.from({ length: 37 }, (_, i) => {
                   const value = fixtureDepth(
@@ -698,8 +661,7 @@ export default function Home() {
             </div>
             <div className="time-note">
               UTC stored internally · Central time displayed · estimates change
-              illustratively with time and scenario; no forecasting engine is
-              connected.
+              illustratively with time; no forecasting engine is connected.
             </div>
           </footer>
         </TabsContent>
@@ -781,8 +743,20 @@ export default function Home() {
                   </div>
                 </div>
                 {fieldAssignment ? (
-                  <div className="field-grid">
-                    <section className="mission-panel">
+                  <Tabs
+                    value={fieldTab}
+                    onValueChange={(v) => setFieldTab(String(v))}
+                    className="field-task-tabs"
+                  >
+                    <TabsList className="field-task-navigation">
+                      <TabsTrigger value="assignment">
+                        Current assignment
+                      </TabsTrigger>
+                      <TabsTrigger value="access">
+                        Approach & hazards
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="assignment" className="mission-panel">
                       <div className="panel-title">
                         <h2>Current assignment</h2>
                         <span className="mission-status">
@@ -797,27 +771,35 @@ export default function Home() {
                         <p className="mission-objective">
                           {fieldAssignment.objective}
                         </p>
-                        <dl className="facts-list">
-                          <div>
-                            <dt>Assigned team</dt>
-                            <dd>{fieldTeamData.name}</dd>
-                          </div>
-                          <div>
-                            <dt>Capability / personnel</dt>
-                            <dd>
-                              {fieldTeamData.capability} /{' '}
-                              {fieldTeamData.people}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Last status update</dt>
-                            <dd>{time(fieldAssignment.updatedAt)} CDT</dd>
-                          </div>
-                          <div>
-                            <dt>Command channel</dt>
-                            <dd>Exercise only · no radio link</dd>
-                          </div>
-                        </dl>
+                        <Collapsible className="team-details">
+                          <CollapsibleTrigger>
+                            Team & assignment details
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            {' '}
+                            <dl className="facts-list">
+                              <div>
+                                <dt>Assigned team</dt>
+                                <dd>{fieldTeamData.name}</dd>
+                              </div>
+                              <div>
+                                <dt>Capability / personnel</dt>
+                                <dd>
+                                  {fieldTeamData.capability} /{' '}
+                                  {fieldTeamData.people}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Last status update</dt>
+                                <dd>{time(fieldAssignment.updatedAt)} CDT</dd>
+                              </div>
+                              <div>
+                                <dt>Command channel</dt>
+                                <dd>Exercise only · no radio link</dd>
+                              </div>
+                            </dl>
+                          </CollapsibleContent>
+                        </Collapsible>{' '}
                         <div className="field-estimate">
                           <StateTag value={fieldSector.state} />
                           <strong>
@@ -826,29 +808,6 @@ export default function Home() {
                               : 'Access verification task'}
                           </strong>
                           <p>{fieldSector.uncertainty}</p>
-                        </div>
-                        <div className="field-primary-actions">
-                          <button
-                            className="action-button primary-action"
-                            onClick={() => {
-                              setReportOpen(true);
-                              setReportStage('edit');
-                            }}
-                          >
-                            <Send size={17} />
-                            Report observation
-                          </button>
-                          <button
-                            className="action-button"
-                            onClick={() => {
-                              selectArea(fieldSector.id);
-                              setView('command');
-                              setFocus((f) => f + 1);
-                            }}
-                          >
-                            <LocateFixed size={17} />
-                            Locate on command map
-                          </button>
                         </div>
                       </div>
                       <div className="status-block">
@@ -895,8 +854,8 @@ export default function Home() {
                           ))}
                         </div>
                       </div>
-                    </section>
-                    <section className="field-access">
+                    </TabsContent>
+                    <TabsContent value="access" className="field-access">
                       <div className="panel-title">
                         <h2>Approach & hazards</h2>
                         <TriangleAlert size={17} />
@@ -938,60 +897,8 @@ export default function Home() {
                           </article>
                         ))}
                       </div>
-                    </section>
-                    <section className="field-report-feed">
-                      <div className="panel-title">
-                        <h2>Team reports</h2>
-                        <span>
-                          {operations.reports.filter(
-                            (r) => r.teamId === fieldTeam,
-                          ).length +
-                            operations.queued.filter(
-                              (r) => r.teamId === fieldTeam,
-                            ).length}
-                        </span>
-                      </div>
-                      <div className="field-section">
-                        {[...operations.queued, ...operations.reports].filter(
-                          (r) => r.teamId === fieldTeam,
-                        ).length === 0 ? (
-                          <div className="empty-state">
-                            <MessageSquareText size={24} />
-                            <h3>No observations submitted</h3>
-                            <p>
-                              Report access, hazards, assistance needs, or
-                              search progress. New reports appear in Command’s
-                              evidence chain.
-                            </p>
-                          </div>
-                        ) : (
-                          [...operations.queued, ...operations.reports]
-                            .filter((r) => r.teamId === fieldTeam)
-                            .map((r) => (
-                              <article key={r.id} className="evidence-item">
-                                <div className="section-heading">
-                                  <strong>{r.kind}</strong>
-                                  <span>{time(r.createdAt)}</span>
-                                </div>
-                                <p>{r.text}</p>
-                                <small>
-                                  {operations.queued.some((q) => q.id === r.id)
-                                    ? 'Queued · not received by Command'
-                                    : 'Received by Command · awaiting verification'}
-                                </small>
-                              </article>
-                            ))
-                        )}
-                      </div>
-                      <div className="field-note">
-                        <ShieldCheck size={17} />
-                        <p>
-                          Session-only prototype. Queued reports are not an
-                          offline backup and are lost on reload.
-                        </p>
-                      </div>
-                    </section>
-                  </div>
+                    </TabsContent>
+                  </Tabs>
                 ) : (
                   <div className="unassigned-state">
                     <ClipboardList size={32} />
@@ -1000,12 +907,46 @@ export default function Home() {
                       Select a team with an assignment, or assign this team from
                       Command.
                     </p>
+                    <span className="muted">
+                      Waiting for an assignment from Command.
+                    </span>
+                  </div>
+                )}
+                {fieldAssignment && (
+                  <div className="phone-actions">
+                    {' '}
+                    <div className="field-primary-actions">
+                      <button
+                        className="action-button primary-action"
+                        onClick={() => {
+                          setReportOpen(true);
+                          setReportStage('edit');
+                        }}
+                      >
+                        <Send size={17} />
+                        Report observation
+                      </button>
+                      <button
+                        className="action-button"
+                        onClick={() => {
+                          setFieldMapArea(fieldSector.id);
+                          setFieldMapOpen(true);
+                        }}
+                      >
+                        <LocateFixed size={17} />
+                        Latest area map
+                      </button>
+                    </div>
                     <button
-                      className="action-button primary-action"
-                      onClick={() => setView('command')}
+                      className="text-button"
+                      onClick={() => setFieldReportsOpen(true)}
                     >
-                      <ArrowLeft size={16} />
-                      Return to Command
+                      Team reports ·{' '}
+                      {
+                        [...operations.reports, ...operations.queued].filter(
+                          (r) => r.teamId === fieldTeam,
+                        ).length
+                      }
                     </button>
                   </div>
                 )}
@@ -1026,12 +967,103 @@ export default function Home() {
           </button>
         </output>
       )}
+      <Dialog open={fieldMapOpen} onOpenChange={setFieldMapOpen}>
+        <DialogContent className="ops-dialog field-map-dialog">
+          <DialogHeader>
+            <DialogTitle>Latest area map</DialogTitle>
+            <DialogDescription>
+              Field copy · updated {time(clock)} CDT ·{' '}
+              {operations.offline
+                ? 'simulated offline; local exercise snapshot'
+                : 'latest shared exercise state'}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <OperationalMap
+            selected={fieldMapArea}
+            onSelect={setFieldMapArea}
+            confirmedHazards={confirmedHazards}
+            target={clock}
+            initial={initialTime}
+            member="mid"
+            focus={1}
+            mode3d={false}
+            setMode3d={() => {}}
+            fieldCopy
+          />
+          <p className="info-note">
+            Read-only field map. Area selection here does not change the Command
+            workspace.
+          </p>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={fieldReportsOpen} onOpenChange={setFieldReportsOpen}>
+        <DialogContent className="ops-dialog">
+          <DialogHeader>
+            <DialogTitle>Team reports</DialogTitle>
+            <DialogDescription>
+              {fieldTeamData.name} · this exercise session
+            </DialogDescription>
+          </DialogHeader>{' '}
+          <section className="field-report-feed">
+            <div className="panel-title">
+              <h2>Team reports</h2>
+              <span>
+                {operations.reports.filter((r) => r.teamId === fieldTeam)
+                  .length +
+                  operations.queued.filter((r) => r.teamId === fieldTeam)
+                    .length}
+              </span>
+            </div>
+            <div className="field-section">
+              {[...operations.queued, ...operations.reports].filter(
+                (r) => r.teamId === fieldTeam,
+              ).length === 0 ? (
+                <div className="empty-state">
+                  <MessageSquareText size={24} />
+                  <h3>No observations submitted</h3>
+                  <p>
+                    Report access, hazards, assistance needs, or search
+                    progress. New reports appear in Command’s evidence chain.
+                  </p>
+                </div>
+              ) : (
+                [...operations.queued, ...operations.reports]
+                  .filter((r) => r.teamId === fieldTeam)
+                  .map((r) => (
+                    <article key={r.id} className="evidence-item">
+                      <div className="section-heading">
+                        <strong>{r.kind}</strong>
+                        <span>{time(r.createdAt)}</span>
+                      </div>
+                      <p>{r.text}</p>
+                      <small>
+                        {operations.queued.some((q) => q.id === r.id)
+                          ? 'Queued · not received by Command'
+                          : r.verifiedAt !== undefined
+                            ? 'Verified by Command · exercise'
+                            : 'Received by Command · awaiting verification'}
+                      </small>
+                    </article>
+                  ))
+              )}
+            </div>
+            <div className="field-note">
+              <ShieldCheck size={17} />
+              <p>
+                Session-only prototype. Queued reports are not an offline backup
+                and are lost on reload.
+              </p>
+            </div>
+          </section>
+        </DialogContent>
+      </Dialog>
       <Dialog open={resourcesOpen} onOpenChange={setResourcesOpen}>
         <DialogContent className="ops-dialog resource-dialog">
           <DialogHeader>
             <DialogTitle>Resources & team status</DialogTitle>
             <DialogDescription>
-              Select a team to open its Field workspace.
+              Select a team to read its current assignment and status.
             </DialogDescription>
           </DialogHeader>
           <section className="operations-bar" aria-label="Team status">
@@ -1051,12 +1083,16 @@ export default function Home() {
                   <button
                     key={team.id}
                     onClick={() => {
-                      setFieldTeam(team.id);
-                      setView('field');
-                      setResourcesOpen(false);
-                      setPlaying(false);
+                      const sector = mock.sectors.find(
+                        (s) => s.id === assignment?.sectorId,
+                      );
+                      setNotice(
+                        sector
+                          ? `${team.name}: ${assignment?.status} at ${sector.code}. ${assignment?.objective}`
+                          : `${team.name}: available · ${team.capability}`,
+                      );
                     }}
-                    title={`Open ${team.name} in Field`}
+                    title={`View ${team.name} status`}
                   >
                     <span>
                       <i
@@ -1087,9 +1123,10 @@ export default function Home() {
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="ops-dialog area-dialog">
           <DialogHeader>
-            <DialogTitle>Area review · {selected.code}</DialogTitle>
+            <DialogTitle>Review & assign · {selected.code}</DialogTitle>
             <DialogDescription>
-              Evidence, access, and proposed tactics for {selected.name}.
+              {selected.name} · verify observations, assess access, and assign
+              in one workspace.
             </DialogDescription>
           </DialogHeader>
           <aside
@@ -1147,6 +1184,7 @@ export default function Home() {
                 <TabsTrigger value="evidence">Evidence</TabsTrigger>
                 <TabsTrigger value="access">Access</TabsTrigger>
                 <TabsTrigger value="critique">Plan review</TabsTrigger>
+                <TabsTrigger value="assign">Assign team</TabsTrigger>
               </TabsList>
               <TabsContent value="evidence" className="detail-content">
                 <section>
@@ -1184,6 +1222,7 @@ export default function Home() {
                       {!(r.verifiedAt !== undefined && r.verifiedAt <= p) && (
                         <button
                           className="action-button"
+                          disabled={r.verifiedAt !== undefined}
                           onClick={() => {
                             dispatch({
                               type: 'verify',
@@ -1308,96 +1347,107 @@ export default function Home() {
                   </section>
                 )}
               </TabsContent>
+              <TabsContent value="assign" className="assignment-content">
+                <div className="assignment-context">
+                  <h3>Assignment brief · {selected.code}</h3>
+                  <p>{selected.next}</p>
+                  <div className="access-status">{selected.access}</div>
+                  <p>{selected.route}</p>
+                  <small>
+                    {reports.filter((r) => r.verifiedAt === undefined).length}{' '}
+                    field observations awaiting verification
+                  </small>
+                  <button
+                    className="text-button"
+                    onClick={() => setInspector('evidence')}
+                  >
+                    Review evidence
+                  </button>
+                </div>
+                <div className="assignment-form">
+                  <label className="form-label" htmlFor="assign-team">
+                    Available team
+                  </label>
+                  <Choice
+                    id="assign-team"
+                    label="Team to assign"
+                    value={assignTeam}
+                    onChange={(id) => {
+                      setAssignTeam(id);
+                      const capability =
+                        mock.teams.find((team) => team.id === id)?.capability ??
+                        '';
+                      setObjective(
+                        objectivePresets(capability, selected.name)[0].text,
+                      );
+                    }}
+                    options={available.map((team) => ({
+                      value: team.id,
+                      label: `${team.name} · ${team.capability}`,
+                    }))}
+                  />
+                  <p className="info-note">
+                    Suggested capability: {selected.capability}. The commander
+                    must assess the fit.
+                  </p>
+                  <label className="form-label" htmlFor="objective">
+                    Assignment objective
+                  </label>
+                  <div className="objective-presets">
+                    <span className="muted">
+                      Suggested for{' '}
+                      {mock.teams.find((team) => team.id === assignTeam)
+                        ?.capability ?? 'selected team'}
+                    </span>
+                    {presets.map((prompt) => (
+                      <button
+                        key={prompt.label}
+                        className="action-button"
+                        aria-pressed={objective === prompt.text}
+                        onClick={() => setObjective(prompt.text)}
+                      >
+                        {prompt.label}
+                        <ArrowRight size={14} />
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    id="objective"
+                    rows={4}
+                    value={objective}
+                    onChange={(e) => setObjective(e.target.value)}
+                  />
+                  <div className="dialog-actions">
+                    <button
+                      className="action-button"
+                      onClick={() => setDetailsOpen(false)}
+                    >
+                      Close review
+                    </button>
+                    <button
+                      className="action-button primary-action"
+                      disabled={!assignTeam || !objective.trim()}
+                      onClick={confirmAssignment}
+                    >
+                      Approve assignment
+                    </button>
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
-            <div className="inspection-actions">
-              <button
-                className="action-button primary-action"
-                disabled={!available.length}
-                onClick={openAssign}
-              >
-                <Users size={16} />
-                {available.length
-                  ? 'Assign reconnaissance'
-                  : 'No available teams'}
-              </button>
-              <small>Commander approval required · simulation only</small>
+            <div className="inspection-actions workflow-footer">
+              <span>Area {selected.code} · simulation only</span>
+              {inspector !== 'assign' && (
+                <button
+                  className="action-button primary-action"
+                  onClick={() => setInspector('assign')}
+                >
+                  Continue to assignment
+                  <ArrowRight size={15} />
+                </button>
+              )}
             </div>
           </aside>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent className="ops-dialog">
-          <DialogHeader>
-            <DialogTitle>Approve reconnaissance assignment</DialogTitle>
-            <DialogDescription>
-              Area {selected.code} · {selected.name}. This records a simulated
-              assignment; nothing is dispatched.
-            </DialogDescription>
-          </DialogHeader>
-          <label className="form-label" htmlFor="assign-team">
-            Available team
-          </label>
-          <Choice
-            id="assign-team"
-            label="Team to assign"
-            value={assignTeam}
-            onChange={(id) => {
-              setAssignTeam(id);
-              const capability =
-                mock.teams.find((team) => team.id === id)?.capability ?? '';
-              setObjective(objectivePresets(capability, selected.name)[0].text);
-            }}
-            options={available.map((team) => ({
-              value: team.id,
-              label: `${team.name} · ${team.capability}`,
-            }))}
-          />
-          <p className="info-note">
-            Suggested capability: {selected.capability}. The commander must
-            assess the fit.
-          </p>
-          <label className="form-label" htmlFor="objective">
-            Assignment objective
-          </label>
-          <div className="objective-presets">
-            <span className="muted">
-              Suggested for{' '}
-              {mock.teams.find((team) => team.id === assignTeam)?.capability ??
-                'selected team'}
-            </span>
-            {presets.map((prompt) => (
-              <button
-                key={prompt.label}
-                className="action-button"
-                aria-pressed={objective === prompt.text}
-                onClick={() => setObjective(prompt.text)}
-              >
-                {prompt.label}
-                <ArrowRight size={14} />
-              </button>
-            ))}
-          </div>
-          <textarea
-            id="objective"
-            rows={4}
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-          />
-          <div className="dialog-actions">
-            <button
-              className="action-button"
-              onClick={() => setAssignOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="action-button primary-action"
-              disabled={!assignTeam || !objective.trim()}
-              onClick={confirmAssignment}
-            >
-              Approve assignment
-            </button>
-          </div>
         </DialogContent>
       </Dialog>
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
@@ -1433,6 +1483,23 @@ export default function Home() {
               <label className="form-label" htmlFor="observation">
                 What did you observe?
               </label>
+              <div className="observation-presets">
+                {observationPresets(reportType, fieldSector.code).map(
+                  (prompt) => (
+                    <button
+                      key={prompt.label}
+                      className="action-button"
+                      aria-pressed={reportText === prompt.text}
+                      onClick={() => setReportText(prompt.text)}
+                    >
+                      {prompt.label}
+                    </button>
+                  ),
+                )}
+              </div>
+              <small className="muted">
+                Choose what you observed, then edit any details before sending.
+              </small>
               <textarea
                 id="observation"
                 rows={5}

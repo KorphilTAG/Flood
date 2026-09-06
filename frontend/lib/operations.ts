@@ -301,3 +301,68 @@ export function objectivePresets(capability: string, area: string) {
     ([label, text]) => ({ label, text: `${area}: ${text}` }),
   );
 }
+
+export function observationPresets(kind: string, area: string) {
+  const options: Record<string, [string, string][]> = {
+    Access: [
+      [
+        'Road blocked',
+        'The observed road approach is blocked. Alternate access has not been verified.',
+      ],
+      [
+        'Water over road',
+        'Water is visible across the road approach. Depth and passability have not been verified.',
+      ],
+      [
+        'Approach clear',
+        'The observed approach is clear at the time of this report. Conditions may change.',
+      ],
+    ],
+    Hazard: [
+      [
+        'Debris observed',
+        'Debris is visible in the observed area. Its extent and movement need further assessment.',
+      ],
+      [
+        'Crossing damaged',
+        'Visible damage observed at the crossing. Access safety has not been established.',
+      ],
+      [
+        'Water rising',
+        'Water appears to be rising compared with our earlier observation. No measured rise rate is available.',
+      ],
+    ],
+    'Assistance needs': [
+      [
+        'People visible',
+        'People are visible in the observed area. Exact count and assistance needs require confirmation.',
+      ],
+      [
+        'Medical help requested',
+        'Medical assistance has been requested. Patient count and urgency require assessment.',
+      ],
+      [
+        'No people visible',
+        'No people are visible from our current observation point. This does not establish that the area is unoccupied.',
+      ],
+    ],
+    'Search progress': [
+      [
+        'Assessment started',
+        'Our team has started assessing the assigned area. Search coverage is not yet complete.',
+      ],
+      [
+        'Area checked',
+        'The assigned observation area has been checked from accessible positions. Inaccessible locations remain unverified.',
+      ],
+      [
+        'Unable to assess',
+        'Our team cannot safely assess the assigned area from the current position. Further support or alternate access is needed.',
+      ],
+    ],
+  };
+  return (options[kind] ?? options.Access).map(([label, text]) => ({
+    label,
+    text: `Area ${area}: ${text}`,
+  }));
+}

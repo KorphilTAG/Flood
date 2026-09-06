@@ -3,10 +3,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as Cesium from 'cesium';
 import { Minus, Plus, LocateFixed, TriangleAlert } from 'lucide-react';
 import mock from '@/data/mock.json';
-import { terrainElevation, riverSample } from '@/lib/topography';
+import terrain from '@/data/terrain.json';
+import texas from '@/data/texas-boundary.json';
+import {
+  areaFootprint,
+  containsPoint,
+  sampleElevation,
+} from '@/lib/topography';
 import { fixtureDepth } from '@/lib/operations';
 import { Checkbox } from '@/components/ui/checkbox';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
+
 type Props = {
   selected: string;
   confirmedHazards: string[];
@@ -17,7 +24,27 @@ type Props = {
   focus: number;
   mode3d: boolean;
   setMode3d: (v: boolean) => void;
+  fieldCopy?: boolean;
+  onHover?: (id: string | null) => void;
 };
+const texasRing = texas.geometry.coordinates[0];
+const txBounds = [-106.65, 25.83, -93.5, 36.51];
+let elevationPromise: Promise<Uint16Array> | undefined;
+function loadElevation() {
+  elevationPromise ??= fetch('/terrain/guadalupe-2021.u16')
+    .then(async (response) => {
+      if (!response.ok) throw new Error('Elevation unavailable');
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength !== terrain.width * terrain.height * 2)
+        throw new Error('Incomplete elevation grid');
+      return new Uint16Array(buffer);
+    })
+    .catch((error) => {
+      elevationPromise = undefined;
+      throw error;
+    });
+  return elevationPromise;
+}
 export default function OperationalMap({
   selected,
   confirmedHazards,
@@ -28,47 +55,67 @@ export default function OperationalMap({
   focus,
   mode3d,
   setMode3d,
+  fieldCopy = false,
+  onHover,
 }: Props) {
   const container = useRef<HTMLDivElement>(null),
     viewer = useRef<Cesium.Viewer | null>(null),
-    api = useRef<typeof Cesium | null>(null),
-    callback = useRef(onSelect);
+    api = useRef<typeof Cesium | null>(null);
+  const events = useRef({ onSelect, onHover }),
+    boundsRef = useRef(txBounds),
+    modeRef = useRef(false);
   const [ready, setReady] = useState(false),
     [error, setError] = useState(''),
-    [basemapIssue, setBasemapIssue] = useState(false);
+    [basemapIssue, setBasemapIssue] = useState(false),
+    [elevationError, setElevationError] = useState('');
+  const [dem, setDem] = useState<Uint16Array | null>(null),
+    [hovered, setHovered] = useState<string | null>(null);
   const [layers, setLayers] = useState({
     flood: true,
     sectors: true,
     teams: true,
-    hazards: true,
+    hazards: false,
     people: false,
     landmarks: true,
-    flow: true,
+    flow: false,
   });
   useEffect(() => {
-    callback.current = onSelect;
-  }, [onSelect]);
+    events.current = { onSelect, onHover };
+  }, [onSelect, onHover]);
+  useEffect(() => {
+    if (!mode3d || dem) return;
+    let active = true;
+    void loadElevation()
+      .then((data) => {
+        if (active) setDem(data);
+      })
+      .catch(() => {
+        if (active)
+          setElevationError(
+            'Historical terrain could not load. Switch to 2D or retry the page; no synthetic terrain is substituted.',
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [mode3d, dem]);
   const resetView = useCallback(() => {
     const v = viewer.current,
       C = api.current;
     if (!v || !C) return;
     v.camera.setView({
       destination: mode3d
-        ? C.Cartesian3.fromDegrees(mock.center[0], mock.center[1] - 0.06, 26000)
-        : C.Rectangle.fromDegrees(
-            mock.center[0] - 0.17,
-            mock.center[1] - 0.1,
-            mock.center[0] + 0.17,
-            mock.center[1] + 0.1,
-          ),
-      orientation: { heading: 0, pitch: C.Math.toRadians(-70), roll: 0 },
+        ? C.Cartesian3.fromDegrees(-99.265, 29.94, 18500)
+        : C.Rectangle.fromDegrees(-99.425, 29.925, -99.115, 30.125),
+      orientation: { heading: 0, pitch: C.Math.toRadians(-65), roll: 0 },
     });
     v.scene.requestRender();
   }, [mode3d]);
   useEffect(() => {
-    let cancelled = false;
-    let resize: ResizeObserver | undefined;
-    let handler: Cesium.ScreenSpaceEventHandler | undefined;
+    let cancelled = false,
+      resize: ResizeObserver | undefined,
+      handler: Cesium.ScreenSpaceEventHandler | undefined,
+      removeMove: (() => void) | undefined;
     (window as unknown as { CESIUM_BASE_URL: string }).CESIUM_BASE_URL =
       '/cesium/';
     void import('cesium')
@@ -88,73 +135,99 @@ export default function OperationalMap({
           selectionIndicator: false,
           infoBox: false,
           sceneMode: C.SceneMode.SCENE2D,
-          terrainProvider: new C.CustomHeightmapTerrainProvider({
-            width: 32,
-            height: 32,
-            credit: 'Procedural exercise terrain · not surveyed elevation',
-            callback: (x, y, level) => {
-              const rect = new C.GeographicTilingScheme().tileXYToRectangle(
-                x,
-                y,
-                level,
-              );
-              const heights = new Float32Array(32 * 32);
-              for (let row = 0; row < 32; row++)
-                for (let col = 0; col < 32; col++) {
-                  const lon = C.Math.toDegrees(
-                    rect.west + ((rect.east - rect.west) * col) / 31,
-                  );
-                  const lat = C.Math.toDegrees(
-                    rect.north - ((rect.north - rect.south) * row) / 31,
-                  );
-                  heights[row * 32 + col] =
-                    lon > -99.65 && lon < -98.95 && lat > 29.7 && lat < 30.3
-                      ? terrainElevation(lon, lat, mock.river)
-                      : 0;
-                }
-              return heights;
-            },
-          }),
+          terrainProvider: new C.EllipsoidTerrainProvider(),
           requestRenderMode: true,
           maximumRenderTimeChange: Infinity,
           skyBox: false,
           skyAtmosphere: false,
         });
         viewer.current = v;
+        v.useBrowserRecommendedResolution = false;
         v.scene.backgroundColor = C.Color.fromCssColorString('#182329');
-        v.scene.globe.baseColor = C.Color.fromCssColorString('#a2aa95');
-        v.scene.globe.material = C.Material.fromType('ElevationContour', {
-          color: C.Color.fromCssColorString('#374b42').withAlpha(0.6),
-          spacing: 20,
-          width: 1.2,
+        v.scene.globe.baseColor = C.Color.fromCssColorString('#c9d0bd');
+        v.scene.globe.cartographicLimitRectangle = C.Rectangle.fromDegrees(
+          ...(txBounds as [number, number, number, number]),
+        );
+        v.scene.globe.clippingPolygons = new C.ClippingPolygonCollection({
+          inverse: true,
+          polygons: [
+            new C.ClippingPolygon({
+              positions: C.Cartesian3.fromDegreesArray(
+                texasRing.slice(0, -1).flat(),
+              ),
+            }),
+          ],
         });
+        v.scene.globe.maximumScreenSpaceError = 1;
         const provider = new C.OpenStreetMapImageryProvider({
           url: 'https://tile.openstreetmap.org/',
+          minimumLevel: 4,
+          rectangle: C.Rectangle.fromDegrees(
+            ...(txBounds as [number, number, number, number]),
+          ),
+          maximumLevel: 19,
         });
         provider.errorEvent.addEventListener(() => {
           if (!cancelled) setBasemapIssue(true);
         });
-        const imagery = v.imageryLayers.addImageryProvider(provider);
-        imagery.saturation = 0.15;
-        imagery.brightness = 0.9;
+        v.imageryLayers.addImageryProvider(provider);
+        v.scene.screenSpaceCameraController.minimumZoomDistance = 500;
+        v.scene.screenSpaceCameraController.maximumZoomDistance = 1800000;
         v.camera.setView({
           destination: C.Rectangle.fromDegrees(
-            mock.center[0] - 0.17,
-            mock.center[1] - 0.1,
-            mock.center[0] + 0.17,
-            mock.center[1] + 0.1,
+            -99.425,
+            29.925,
+            -99.115,
+            30.125,
           ),
         });
+        const pickedArea = (position: Cesium.Cartesian2) => {
+          const id = v.scene.pick(position)?.id?.id;
+          if (typeof id !== 'string') return null;
+          const area = id.replace(/^(hazard|people):/, '');
+          return mock.sectors.some((s) => s.id === area) ? area : null;
+        };
         handler = new C.ScreenSpaceEventHandler(v.scene.canvas);
-        handler.setInputAction((event: { position: Cesium.Cartesian2 }) => {
-          const pick = v.scene.pick(event.position);
-          const id = pick?.id?.id;
-          if (typeof id === 'string') {
-            const areaId = id.replace(/^(hazard|people):/, '');
-            if (mock.sectors.some((s) => s.id === areaId))
-              callback.current(areaId);
-          }
+        handler.setInputAction((e: { position: Cesium.Cartesian2 }) => {
+          const id = pickedArea(e.position);
+          if (id) events.current.onSelect(id);
         }, C.ScreenSpaceEventType.LEFT_CLICK);
+        handler.setInputAction((e: { endPosition: Cesium.Cartesian2 }) => {
+          const id = pickedArea(e.endPosition);
+          setHovered(id);
+          events.current.onHover?.(id);
+          v.scene.canvas.style.cursor = id ? 'pointer' : 'grab';
+        }, C.ScreenSpaceEventType.MOUSE_MOVE);
+        // Restrict navigation to Texas in 2D and the archived DEM coverage in 3D.
+        let correcting = false;
+        removeMove = v.camera.moveEnd.addEventListener(() => {
+          if (correcting) return;
+          const carto = v.camera.positionCartographic,
+            lon = C.Math.toDegrees(carto.longitude),
+            lat = C.Math.toDegrees(carto.latitude);
+          const [w, s, e, n] = boundsRef.current;
+          if (
+            lon < w ||
+            lon > e ||
+            lat < s ||
+            lat > n ||
+            (!modeRef.current && !containsPoint(texasRing, lon, lat))
+          ) {
+            correcting = true;
+            v.camera.setView({
+              destination: modeRef.current
+                ? C.Cartesian3.fromDegrees(-99.265, 29.94, 18500)
+                : C.Rectangle.fromDegrees(-99.425, 29.925, -99.115, 30.125),
+              orientation: {
+                heading: 0,
+                pitch: C.Math.toRadians(-65),
+                roll: 0,
+              },
+            });
+            correcting = false;
+            v.scene.requestRender();
+          }
+        });
         resize = new ResizeObserver(() => {
           if (!v.isDestroyed()) {
             v.resize();
@@ -167,13 +240,14 @@ export default function OperationalMap({
       .catch(() => {
         if (!cancelled)
           setError(
-            'Map rendering is unavailable on this device. All area details and field actions remain available.',
+            'Map rendering is unavailable on this device. Area details remain available.',
           );
       });
     return () => {
       cancelled = true;
       resize?.disconnect();
       handler?.destroy();
+      removeMove?.();
       if (viewer.current && !viewer.current.isDestroyed())
         viewer.current.destroy();
       viewer.current = null;
@@ -182,239 +256,268 @@ export default function OperationalMap({
   useEffect(() => {
     const v = viewer.current,
       C = api.current;
+    if (!ready || !v || !C || (mode3d && !dem)) return;
+    modeRef.current = mode3d;
+    boundsRef.current = mode3d ? terrain.bounds : txBounds;
+    v.scene.globe.cartographicLimitRectangle = C.Rectangle.fromDegrees(
+      ...(boundsRef.current as [number, number, number, number]),
+    );
+    if (mode3d && dem) {
+      const scheme = new C.GeographicTilingScheme();
+      v.terrainProvider = new C.CustomHeightmapTerrainProvider({
+        width: 65,
+        height: 65,
+        tilingScheme: scheme,
+        credit: 'USGS 3DEP · 2021-11-03 · NAVD88',
+        callback: (x, y, level) => {
+          const rect = scheme.tileXYToRectangle(x, y, level),
+            heights = new Float32Array(65 * 65);
+          for (let row = 0; row < 65; row++)
+            for (let col = 0; col < 65; col++) {
+              const lon = C.Math.toDegrees(
+                  rect.west + ((rect.east - rect.west) * col) / 64,
+                ),
+                lat = C.Math.toDegrees(
+                  rect.north - ((rect.north - rect.south) * row) / 64,
+                );
+              // Edge padding is outside the clipped DEM extent and is never shown.
+              heights[row * 65 + col] = sampleElevation(
+                dem,
+                terrain,
+                Math.max(terrain.bounds[0], Math.min(terrain.bounds[2], lon)),
+                Math.max(terrain.bounds[1], Math.min(terrain.bounds[3], lat)),
+              )!;
+            }
+          return heights;
+        },
+      });
+      v.scene.globe.material = C.Material.fromType('ElevationContour', {
+        color: C.Color.fromCssColorString('#344839').withAlpha(0.7),
+        spacing: 20,
+        width: 1,
+      });
+      v.scene.morphTo3D(0);
+    } else {
+      v.scene.globe.material = undefined;
+      v.terrainProvider = new C.EllipsoidTerrainProvider();
+      v.scene.morphTo2D(0);
+    }
+    const imagery = v.imageryLayers.get(0);
+    imagery.alpha = mode3d ? 0.55 : 1;
+    imagery.saturation = mode3d ? 0.3 : 1;
+    imagery.brightness = 1;
+    v.scene.screenSpaceCameraController.maximumZoomDistance = mode3d
+      ? 28000
+      : 1800000;
+    resetView();
+  }, [ready, mode3d, dem, resetView]);
+  useEffect(() => {
+    const v = viewer.current,
+      C = api.current;
     if (!ready || !v || !C) return;
     v.entities.removeAll();
-    const color = (value: string) => C.Color.fromCssColorString(value);
-    const factor = member === 'high' ? 1.25 : member === 'low' ? 0.75 : 1;
-    const width =
-      Math.max(160, 650 + ((target - initial) / 3600000) * 180) * factor;
-    // A graded water ribbon follows the exercise river bed. Width and surface
-    // elevation respond to the clock; the ground elevation remains fixed.
-    const surface = (lon: number) =>
-      riverSample(lon, mock.river).bed +
-      fixtureDepth(1.4, target, initial, member);
-    const ribbon: number[] = [];
-    const steps = 100;
-    const offset = width / 2 / 111000;
-    for (let j = 0; j <= steps; j++) {
-      const lon =
-        mock.river[0] +
-        ((mock.river[mock.river.length - 2] - mock.river[0]) * j) / steps;
-      ribbon.push(lon, riverSample(lon, mock.river).lat + offset, surface(lon));
-    }
-    for (let j = steps; j >= 0; j--) {
-      const lon =
-        mock.river[0] +
-        ((mock.river[mock.river.length - 2] - mock.river[0]) * j) / steps;
-      ribbon.push(lon, riverSample(lon, mock.river).lat - offset, surface(lon));
-    }
+    const color = (s: string) => C.Color.fromCssColorString(s);
+    const ground = (lon: number, lat: number) =>
+      mode3d && dem ? (sampleElevation(dem, terrain, lon, lat) ?? 0) : 0;
+    const positions = (ring: number[][]) =>
+      C.Cartesian3.fromDegreesArray(ring.flat());
+    const level = fixtureDepth(1.4, target, initial, member);
     if (layers.flood)
       v.entities.add({
-        id: 'demo:flood-extent',
-        polygon: {
-          hierarchy: C.Cartesian3.fromDegreesArrayHeights(ribbon),
-          perPositionHeight: true,
-          material: color('#368bb5').withAlpha(0.72),
-          outline: false,
+        id: 'flood:extent',
+        corridor: {
+          positions: C.Cartesian3.fromDegreesArray(mock.river),
+          width: Math.max(160, 500 + level * 150),
+          material: color('#218bbe').withAlpha(0.28),
         },
       });
     if (layers.flow)
-      for (let i = 0; i < mock.river.length - 2; i += 2) {
-        const phase = ((((target - initial) / 600000) % 1) + 1) % 1;
-        const lon1 =
-          mock.river[i] + (mock.river[i + 2] - mock.river[i]) * phase * 0.3;
-        const lon2 = lon1 + (mock.river[i + 2] - mock.river[i]) * 0.5;
+      for (let i = 0; i < mock.river.length - 2; i += 2)
         v.entities.add({
           id: `flow:${i}`,
           polyline: {
-            positions: C.Cartesian3.fromDegreesArrayHeights([
-              lon1,
-              riverSample(lon1, mock.river).lat,
-              surface(lon1) + 5,
-              lon2,
-              riverSample(lon2, mock.river).lat,
-              surface(lon2) + 5,
-            ]),
-            width: 10,
-            material: new C.PolylineArrowMaterialProperty(
-              color('#d6f1f5').withAlpha(0.9),
+            positions: C.Cartesian3.fromDegreesArray(
+              mock.river.slice(i, i + 4),
             ),
+            clampToGround: true,
+            width: 9,
+            material: new C.PolylineArrowMaterialProperty(color('#21769e')),
           },
         });
-      }
-    if (layers.hazards)
-      mock.sectors
-        .filter((s) => ['Critical', 'High'].includes(s.severity))
-        .forEach((s) => {
-          v.entities.add({
-            id: `hazard:${s.id}`,
-            position: C.Cartesian3.fromDegrees(
-              s.lon + 0.008,
-              s.lat + 0.003,
-              terrainElevation(s.lon + 0.008, s.lat + 0.003, mock.river) + 20,
-            ),
-            label: {
-              text: `${confirmedHazards.includes(s.id) ? '✓' : '▲'} ${s.id.startsWith('crossing:') ? 'CLOSED CROSSING' : 'DEBRIS / ACCESS'}`,
-              font: 'bold 11px Arial',
-              fillColor: color('#ffd29a'),
-              showBackground: true,
-              backgroundColor: color('#342b24').withAlpha(0.95),
-              backgroundPadding: new C.Cartesian2(7, 5),
-              disableDepthTestDistance: Infinity,
-            },
-          });
-        });
-    if (layers.people)
-      mock.sectors
-        .filter((s) => s.people[1] > 0)
-        .forEach((s) => {
-          v.entities.add({
-            id: `people:${s.id}`,
-            position: C.Cartesian3.fromDegrees(
-              s.lon,
-              s.lat,
-              terrainElevation(s.lon, s.lat, mock.river) + 30,
-            ),
-            ellipse: {
-              semiMajorAxis: 600,
-              semiMinorAxis: 450,
-              material: color('#d795ac').withAlpha(0.32),
-            },
-            label: {
-              text: `${s.people[0]}–${s.people[1]} people?`,
-              font: 'bold 12px Arial',
-              pixelOffset: new C.Cartesian2(0, 35),
-              fillColor: color('#ffe4ee'),
-              showBackground: true,
-              backgroundColor: color('#4c3040'),
-              disableDepthTestDistance: Infinity,
-            },
-          });
-        });
-    if (layers.landmarks)
-      mock.places.forEach((place) => {
-        v.entities.add({
-          id: `landmark:${place.name}`,
-          position: C.Cartesian3.fromDegrees(
-            place.lon,
-            place.lat,
-            terrainElevation(place.lon, place.lat, mock.river) + 20,
-          ),
-          point: {
-            pixelSize: 5,
-            color: color('#fffce6'),
-            disableDepthTestDistance: Infinity,
-          },
-          label: {
-            text: `◆ ${place.name}`,
-            font: '12px Arial',
-            fillColor: color('#fffce6'),
-            showBackground: true,
-            backgroundColor: color('#394438'),
-            pixelOffset: new C.Cartesian2(0, -16),
-            disableDepthTestDistance: Infinity,
-          },
-        });
-      });
     if (layers.sectors)
       mock.sectors.forEach((s) => {
-        const active = s.id === selected,
-          c =
-            s.state === 'Unknown'
-              ? '#7c6282'
-              : s.severity === 'Critical'
-                ? '#a84237'
-                : '#a66f1d';
-        const corners = [
-          s.lon - 0.006,
-          s.lat - 0.003,
-          s.lon + 0.006,
-          s.lat - 0.003,
-          s.lon + 0.007,
-          s.lat + 0.004,
-          s.lon - 0.004,
-          s.lat + 0.006,
-        ];
+        const ring = areaFootprint(s.lon, s.lat);
         v.entities.add({
           id: s.id,
           position: C.Cartesian3.fromDegrees(
             s.lon,
             s.lat,
-            terrainElevation(s.lon, s.lat, mock.river) + 15,
+            ground(s.lon, s.lat) + 15,
           ),
           polygon: {
-            hierarchy: C.Cartesian3.fromDegreesArray(corners),
-
-            material: color(c).withAlpha(active ? 0.3 : 0.12),
-            outline: true,
-            outlineColor: color(active ? '#e5f3f7' : c),
+            hierarchy: positions(ring),
+            material: color('#cf8b47').withAlpha(0.1),
+          },
+          polyline: {
+            positions: positions(ring),
+            clampToGround: true,
+            width: 2,
+            material: color('#a5682e'),
           },
           point: {
-            pixelSize: active ? 10 : 7,
-            color: color(active ? '#e6f3fc' : '#203442'),
-            outlineColor: color('#192c3a'),
+            pixelSize: 7,
+            color: color('#213f51'),
             outlineWidth: 2,
+            outlineColor: C.Color.WHITE,
             disableDepthTestDistance: Infinity,
           },
           label: {
-            text: s.code.replace('–', '-'),
+            text: s.code,
             font: 'bold 13px Arial',
-            fillColor: color('#f4f7fa'),
+            fillColor: C.Color.WHITE,
             showBackground: true,
-            backgroundColor: color('#172a38'),
+            backgroundColor: color('#263d4c'),
             backgroundPadding: new C.Cartesian2(7, 4),
-            pixelOffset: new C.Cartesian2(0, -24),
+            pixelOffset: new C.Cartesian2(0, -22),
             disableDepthTestDistance: Infinity,
           },
         });
       });
-    if (layers.teams)
-      mock.teams.forEach((team) =>
+    if (layers.hazards)
+      mock.sectors
+        .filter((s) => ['Critical', 'High'].includes(s.severity))
+        .forEach((s) =>
+          v.entities.add({
+            id: `hazard:${s.id}`,
+            position: C.Cartesian3.fromDegrees(
+              s.lon + 0.007,
+              s.lat + 0.002,
+              ground(s.lon + 0.007, s.lat + 0.002) + 20,
+            ),
+            label: {
+              text: `${confirmedHazards.includes(s.id) ? '✓' : '▲'} ${s.id.startsWith('crossing:') ? 'CROSSING CLOSED' : 'ACCESS HAZARD'}`,
+              font: 'bold 11px Arial',
+              fillColor: color('#ffe0a6'),
+              showBackground: true,
+              backgroundColor: color('#493626'),
+              backgroundPadding: new C.Cartesian2(6, 4),
+              disableDepthTestDistance: Infinity,
+            },
+          }),
+        );
+    if (layers.people)
+      mock.sectors
+        .filter((s) => s.people[1] > 0)
+        .forEach((s) =>
+          v.entities.add({
+            id: `people:${s.id}`,
+            position: C.Cartesian3.fromDegrees(
+              s.lon,
+              s.lat,
+              ground(s.lon, s.lat) + 20,
+            ),
+            ellipse: {
+              semiMajorAxis: 600,
+              semiMinorAxis: 450,
+              material: color('#ae4777').withAlpha(0.14),
+            },
+            label: {
+              text: `${s.people[0]}–${s.people[1]} people?`,
+              font: 'bold 12px Arial',
+              pixelOffset: new C.Cartesian2(0, 22),
+              fillColor: C.Color.WHITE,
+              showBackground: true,
+              backgroundColor: color('#6b3750'),
+              disableDepthTestDistance: Infinity,
+            },
+          }),
+        );
+    if (layers.landmarks)
+      mock.places.forEach((s) =>
         v.entities.add({
-          id: team.id,
+          id: `landmark:${s.name}`,
           position: C.Cartesian3.fromDegrees(
-            team.lon,
-            team.lat,
-            terrainElevation(team.lon, team.lat, mock.river) + 16,
+            s.lon,
+            s.lat,
+            ground(s.lon, s.lat) + 15,
+          ),
+          label: {
+            text: `◆ ${s.name}`,
+            font: '12px Arial',
+            fillColor: color('#213f39'),
+            showBackground: true,
+            backgroundColor: C.Color.WHITE.withAlpha(0.9),
+            disableDepthTestDistance: Infinity,
+          },
+        }),
+      );
+    if (layers.teams)
+      mock.teams.forEach((s) =>
+        v.entities.add({
+          id: s.id,
+          position: C.Cartesian3.fromDegrees(
+            s.lon,
+            s.lat,
+            ground(s.lon, s.lat) + 15,
           ),
           point: {
             pixelSize: 7,
-            color: color('#006958'),
+            color: color('#17685d'),
             outlineColor: C.Color.WHITE,
             outlineWidth: 2,
+            disableDepthTestDistance: Infinity,
           },
           label: {
-            text: team.name,
-            font: '12px Arial',
-            fillColor: color('#143b35'),
+            text: s.name,
+            font: '11px Arial',
+            pixelOffset: new C.Cartesian2(0, 17),
+            fillColor: color('#154e41'),
             showBackground: true,
             backgroundColor: C.Color.WHITE.withAlpha(0.9),
-            pixelOffset: new C.Cartesian2(0, 18),
             disableDepthTestDistance: Infinity,
           },
         }),
       );
     v.scene.requestRender();
-  }, [
-    ready,
-    selected,
-    target,
-    initial,
-    member,
-    layers,
-    mode3d,
-    confirmedHazards,
-  ]);
+  }, [ready, mode3d, dem, layers, target, initial, member, confirmedHazards]);
   useEffect(() => {
     const v = viewer.current,
       C = api.current;
     if (!ready || !v || !C) return;
-    const imagery = v.imageryLayers.get(0);
-    if (imagery) imagery.alpha = mode3d ? 0.38 : 0.85;
-    if (mode3d) v.scene.morphTo3D(0);
-    else v.scene.morphTo2D(0);
-    resetView();
-  }, [mode3d, ready, resetView]);
+    mock.sectors.forEach((s) => {
+      const entity = v.entities.getById(s.id);
+      if (!entity?.polygon || !entity.polyline) return;
+      const active = s.id === selected,
+        over = s.id === hovered;
+      const color = C.Color.fromCssColorString(
+        active
+          ? '#238ed0'
+          : over
+            ? '#e6ba59'
+            : s.severity === 'Critical'
+              ? '#b75044'
+              : '#b7803d',
+      );
+      entity.polygon.material = new C.ColorMaterialProperty(
+        color.withAlpha(over ? 0.23 : active ? 0.17 : 0.07),
+      );
+      entity.polyline.material = new C.ColorMaterialProperty(
+        color.withAlpha(active || over ? 1 : 0.65),
+      );
+      entity.polyline.width = new C.ConstantProperty(active || over ? 4 : 2);
+      if (entity.label) {
+        entity.label.text = new C.ConstantProperty(
+          active || over ? `${s.code} · ${s.name}` : s.code,
+        );
+        entity.label.backgroundColor = new C.ConstantProperty(
+          active
+            ? C.Color.fromCssColorString('#185b80')
+            : C.Color.fromCssColorString('#263d4c'),
+        );
+      }
+    });
+    v.scene.requestRender();
+  }, [ready, selected, hovered, layers, dem, mode3d, target, confirmedHazards]);
   useEffect(() => {
     const v = viewer.current,
       C = api.current;
@@ -423,54 +526,52 @@ export default function OperationalMap({
     if (!s) return;
     v.camera.setView({
       destination: mode3d
-        ? C.Cartesian3.fromDegrees(s.lon, s.lat - 0.015, 6500)
+        ? C.Cartesian3.fromDegrees(s.lon, s.lat - 0.015, 6000)
         : C.Rectangle.fromDegrees(
-            s.lon - 0.035,
+            s.lon - 0.025,
             s.lat - 0.025,
-            s.lon + 0.035,
+            s.lon + 0.025,
             s.lat + 0.025,
           ),
       orientation: { heading: 0, pitch: C.Math.toRadians(-65), roll: 0 },
     });
     v.scene.requestRender();
-  }, [focus, ready, selected, mode3d]);
+  }, [focus, selected, ready, mode3d]);
+  const selectedArea =
+    mock.sectors.find((s) => s.id === selected) ?? mock.sectors[0];
+  const elevation = dem
+    ? sampleElevation(dem, terrain, selectedArea.lon, selectedArea.lat)
+    : null;
   return (
-    <section className="map-panel" aria-label="Operational map">
-      <div ref={container} className="cesium-host" />
-      {!ready && !error && (
-        <output className="map-loading">Loading geographic map…</output>
-      )}
-      {error && (
-        <div className="map-failure" role="alert">
-          <TriangleAlert />
-          <p>{error}</p>
-        </div>
-      )}
-      <div className="map-top">
-        <div className="map-title">
-          AREA OF OPERATIONS <span>Topographic exercise / 20 m contours</span>
-        </div>
-        <fieldset className="map-mode" aria-label="Map dimension">
-          <button aria-pressed={!mode3d} onClick={() => setMode3d(false)}>
-            2D
-          </button>
-          <button aria-pressed={mode3d} onClick={() => setMode3d(true)}>
-            3D
-          </button>
-        </fieldset>
+    <section
+      className={`map-module ${fieldCopy ? 'field-map-copy' : ''}`}
+      aria-label={fieldCopy ? 'Latest field area map' : 'Texas operational map'}
+    >
+      <div className="map-toolbar">
+        {!fieldCopy && (
+          <fieldset className="map-mode" aria-label="Map dimension">
+            <button aria-pressed={!mode3d} onClick={() => setMode3d(false)}>
+              2D streets
+            </button>
+            <button aria-pressed={mode3d} onClick={() => setMode3d(true)}>
+              3D terrain
+            </button>
+          </fieldset>
+        )}
+        <span>
+          {mode3d ? 'USGS 2021 · 20 m contours' : 'Texas · streets & landmarks'}
+        </span>
+        <button
+          className="icon-button"
+          aria-label="Reset map to affected area"
+          title="Reset to affected area"
+          onClick={resetView}
+        >
+          <LocateFixed size={16} />
+        </button>
       </div>
-      <div className="map-layers">
-        {(
-          [
-            'flood',
-            'sectors',
-            'teams',
-            'hazards',
-            'people',
-            'landmarks',
-            'flow',
-          ] as const
-        ).map((key) => (
+      <fieldset className="map-layer-controls" aria-label="Visible map layers">
+        {(Object.keys(layers) as (keyof typeof layers)[]).map((key) => (
           <label key={key}>
             <Checkbox
               checked={layers[key]}
@@ -480,93 +581,105 @@ export default function OperationalMap({
             />
             {
               {
-                flood: 'Flood extent',
+                flood: 'Flood',
                 sectors: 'Areas',
                 teams: 'Teams',
                 hazards: 'Hazards',
-                people: 'People hotspots',
+                people: 'People',
                 landmarks: 'Landmarks',
-                flow: 'Water flow',
+                flow: 'Flow',
               }[key]
             }
           </label>
         ))}
-      </div>
-      <div className="elevation-key">
-        <span>EXERCISE ELEVATION</span>
-        {(() => {
-          const area =
-            mock.sectors.find((s) => s.id === selected) ?? mock.sectors[0];
-          const ground = terrainElevation(area.lon, area.lat, mock.river);
-          const water = fixtureDepth(area.depth, target, initial, member);
-          return (
-            <>
-              <strong>
-                {area.code} · ground {ground.toFixed(1)} m
-              </strong>
-              <div>Water surface {(ground + water).toFixed(1)} m</div>
-              <small>Depth {water.toFixed(1)} m · ground fixed</small>
-            </>
-          );
-        })()}
-      </div>
-      <div className="map-controls">
-        <button
-          title="Zoom in"
-          aria-label="Zoom in"
-          onClick={() => {
-            viewer.current?.camera.zoomIn(
-              (viewer.current?.camera.positionCartographic.height ?? 20000) *
-                0.3,
-            );
-            viewer.current?.scene.requestRender();
-          }}
-        >
-          <Plus size={18} />
-        </button>
-        <button
-          title="Zoom out"
-          aria-label="Zoom out"
-          onClick={() => {
-            viewer.current?.camera.zoomOut(
-              (viewer.current?.camera.positionCartographic.height ?? 20000) *
-                0.3,
-            );
-            viewer.current?.scene.requestRender();
-          }}
-        >
-          <Minus size={18} />
-        </button>
-        <button
-          title="Reset map extent"
-          aria-label="Reset map extent"
-          onClick={resetView}
-        >
-          <LocateFixed size={18} />
-        </button>
-      </div>
-      <div className="map-bottom">
-        <div className="map-legend">
-          <span>
-            <i className="flood-key" />
-            Modeled flood
-          </span>
-          <span>
-            <i className="sector-key" />
-            Review area
-          </span>
-          <span>
-            <i className="team-key" />
-            Team
-          </span>
+      </fieldset>
+      <div
+        className="map-panel"
+        onMouseLeave={() => {
+          setHovered(null);
+          onHover?.(null);
+        }}
+      >
+        <div ref={container} className="cesium-host" />
+        {(!ready || (mode3d && !dem)) && !error && !elevationError && (
+          <output className="map-loading">
+            {mode3d
+              ? 'Loading historical USGS elevation…'
+              : 'Loading Texas street map…'}
+          </output>
+        )}
+        {(error || (mode3d && elevationError)) && (
+          <div className="map-failure" role="alert">
+            <TriangleAlert />
+            <p>{error || elevationError}</p>
+          </div>
+        )}
+        <div className="map-controls">
+          <button
+            aria-label="Zoom in"
+            onClick={() => {
+              viewer.current?.camera.zoomIn(
+                (viewer.current.camera.positionCartographic.height ?? 20000) *
+                  0.3,
+              );
+              viewer.current?.scene.requestRender();
+            }}
+          >
+            <Plus size={18} />
+          </button>
+          <button
+            aria-label="Zoom out"
+            onClick={() => {
+              viewer.current?.camera.zoomOut(
+                (viewer.current.camera.positionCartographic.height ?? 20000) *
+                  0.3,
+              );
+              viewer.current?.scene.requestRender();
+            }}
+          >
+            <Minus size={18} />
+          </button>
         </div>
-        <p>
-          {basemapIssue
-            ? 'Basemap tiles unavailable. Overlays remain illustrative.'
-            : mode3d
-              ? 'Synthetic terrain · 20 m contours · arrows show modeled flow'
-              : 'Drag to pan · select area or hotspot · all overlays simulated'}
-        </p>
+        <div className="map-selection-label">
+          {hovered
+            ? mock.sectors.find((s) => s.id === hovered)?.name
+            : `${selectedArea.code} · ${selectedArea.name}`}
+          <small>
+            {hovered
+              ? 'Click to select area'
+              : 'Blue outline = selected area · shaded footprints are simulated'}
+          </small>
+        </div>
+      </div>
+      <div className="map-caption">
+        {basemapIssue ? (
+          <span>Street tiles unavailable; map overlays remain simulated.</span>
+        ) : mode3d ? (
+          <>
+            <span>
+              Ground {elevation?.toFixed(1) ?? '—'} m NAVD88 · depth{' '}
+              {fixtureDepth(
+                selectedArea.depth,
+                target,
+                initial,
+                member,
+              ).toFixed(1)}{' '}
+              m simulated
+            </span>
+            <a
+              href={terrain.sources[0].metaUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              USGS source
+            </a>
+          </>
+        ) : (
+          <span>
+            Street map © OpenStreetMap contributors · footprints and flood
+            overlays simulated
+          </span>
+        )}
       </div>
     </section>
   );
