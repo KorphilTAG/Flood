@@ -53,7 +53,18 @@ python -m scripts.ingest_camps --input <path to GeoJSON/Shapefile> --source <sou
 
 # 4. Verify
 python -m scripts.verify_exposure_layers
+
+# 5. Expose the loaded tables under the names the scenario registry declares
+psql "$FLOOD_POSTGIS_DSN" -f db/exposure_views.sql
 ```
+
+Step 5 creates the `flood_exposure.kerr_2025_07_04_*` views the Contract 0 exposure
+registry points at (`scenarios/kerr-2025-07-04.json`). The ingestion tables above are
+shaped for loading -- one row shape per layer, a `geom` column, free-form JSONB
+attributes -- while the registry declares per-layer id fields, an attribute allow-list
+and a `geometry` column. `db/exposure_views.sql` is the adapter between the two, so
+`schema.sql` needs no change and the impact extractor
+(`flood impacts extract`) can read the layers as configured.
 
 All four automated ingestion scripts (`ingest_txdot_roads.py`,
 `ingest_nhd_flowlines.py`, `ingest_osm_buildings.py`,
@@ -125,7 +136,22 @@ human curator must save each authoritative, text-extractable PDF locally and
 manually verify its title, publisher, canonical URL, SHA-256 checksum, curator
 identity, verification time, and verification note before processing it.
 
-Start from `aar/sources/manifest.example.json`, but do not build that
+To save typing, `scripts/draft_aar_manifest.py` scans a sources directory and writes
+a draft manifest with the mechanically derivable fields already filled -- SHA-256, page
+count, and the title each document prints on its own first page:
+
+```bash
+python -m scripts.draft_aar_manifest --sources ../data/aar/sources \
+    --output aar/sources/manifest.draft.json
+```
+
+It deliberately leaves `publisher`, `canonical_url`, `verified_by`, `verified_at`, and
+`verification_note` blank and every entry at `status: "pending"`, so the draft *fails*
+`aar validate` until a curator supplies provenance. It never guesses a URL and never
+attests to a document it cannot authenticate -- that gate is the reason the corpus can
+be cited at all.
+
+Start from `aar/sources/manifest.example.json` or a generated draft, but do not build a
 placeholder manifest. Store real PDFs and the corresponding verified manifest
 under ignored `data/aar/`. The production manifest must include a verified
 entry for every required category: Texas House/Senate committee materials, Kerr

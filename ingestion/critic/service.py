@@ -10,6 +10,7 @@ from typing import Callable
 
 from aar.search import search_index
 
+from .facts import ImpactFacts, ImpactFactsError
 from .llm import Generator, generate_critique
 from .prompts import build_correction_message
 from .schemas import (
@@ -40,10 +41,16 @@ class CritiqueGenerationError(Exception):
     """
 
 
-def _build_query(request: CritiqueRequest) -> str:
-    if request.situation:
-        return f"{request.situation}\n\n{request.plan}"
-    return request.plan
+def _build_query(request: CritiqueRequest, impact: ImpactFacts | None) -> str:
+    """Retrieval query: the plan, plus whatever context narrows it.
+
+    The rendered impact facts join the query so retrieval is steered by the actual
+    situation (PRD 6.6: retrieval "by semantic similarity to the current impact JSON
+    and/or the trainee's proposed plan"), not by the plan text alone.
+    """
+    parts = [p for p in (request.situation, impact.render() if impact else None) if p]
+    parts.append(request.plan)
+    return "\n\n".join(parts)
 
 
 def run_critique(
@@ -69,7 +76,8 @@ def run_critique(
     raised -- the request still fails closed, never returning a fabricated
     citation, but only after regeneration was actually attempted.
     """
-    query = _build_query(request)
+    impact = ImpactFacts(request.impact) if request.impact is not None else None
+    query = _build_query(request, impact)
     top_k = request.top_k if request.top_k is not None else settings.default_top_k
 
     hits = search(
@@ -87,7 +95,13 @@ def run_critique(
         )
 
     retrieved_ids = {hit["chunk_id"] for hit in hits}
-    response_schema = build_structured_response_schema([hit["chunk_id"] for hit in hits])
+    # The citable set is the union of retrieved AAR chunks and this request's own
+    # flood facts. The validator and the structured-output enum are both built from
+    # it, so a feature ID is exactly as unfakeable as a chunk ID (PRD 6.6).
+    feature_ids = impact.feature_ids() if impact else set()
+    citable_ids = [hit["chunk_id"] for hit in hits] + sorted(feature_ids)
+    valid_ids = retrieved_ids | feature_ids
+    response_schema = build_structured_response_schema(citable_ids)
 
     attempt = 0
     correction: str | None = None
@@ -106,6 +120,7 @@ def run_critique(
                 generator=generator,
                 settings=settings,
                 correction=correction,
+                impact_text=impact.render() if impact else None,
             )
             objections_raw = [
                 {"text": item.text, "chunk_ids": [cid.value for cid in item.chunk_ids]}
@@ -122,25 +137,27 @@ def run_critique(
                 f"Historical critique generation failed: {exc}"
             ) from exc
 
-        last_violations = find_citation_violations(objections_raw, alternatives_raw, retrieved_ids)
+        last_violations = find_citation_violations(objections_raw, alternatives_raw, valid_ids)
         if not last_violations:
             objections = [CritiqueObjection(**item) for item in objections_raw]
             alternatives = [CritiqueAlternative(**item) for item in alternatives_raw]
             break
 
-        correction = build_correction_message(last_violations, retrieved_ids)
+        correction = build_correction_message(last_violations, valid_ids)
         attempt += 1
     else:
         raise CritiqueGenerationError(
-            "Historical critique still referenced non-existent chunk IDs after "
+            "Historical critique still referenced non-existent IDs after "
             f"{settings.max_regeneration_attempts + 1} attempts: {last_violations}"
         )
 
     citations = [RetrievedChunk(**hit) for hit in hits]
+    cited = {cid for item in (*objections, *alternatives) for cid in item.chunk_ids}
     return CritiqueResponse(
         objections=objections,
         alternatives=alternatives,
         citations=citations,
+        feature_citations=sorted(cited & feature_ids),
         decision_point=request.decision_point,
         model=settings.openai_model,
     )

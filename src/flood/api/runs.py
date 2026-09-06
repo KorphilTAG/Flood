@@ -17,6 +17,11 @@ from flood.api.errors import APIError
 from flood.contracts.validate import ContractError, validate_json
 from flood.interfaces import Grid, RASTER_BANDS
 from flood.products.raster import render_overlay_png
+from flood.search_area.estimator import (
+    DEFAULT_SEARCH_AREA_CONFIG,
+    SearchAreaInputError,
+    estimate_missing_person_search_area,
+)
 from flood.scenario import load_scenario
 from flood.timegrid import to_iso
 from flood.timegrid import to_iso
@@ -678,3 +683,37 @@ def get_hindsight_file(
     guessed_type, _ = mimetypes.guess_type(target_file)
     media_type = guessed_type or "application/octet-stream"
     return range_file_response(target_file, request.headers.get("Range"), media_type=media_type)
+
+
+@router.get("/{run_id}/search-area")
+def get_search_area(
+    run_id: str,
+    p: str | None = None,
+    t: str | None = None,
+    last_known_position_id: str | None = None,
+    store: Any = Depends(get_store),
+) -> JSONResponse:
+    """Probability-ranked search-priority polygons for one declared last-known position.
+
+    This is the LLM layer's access path to the search-area tool: it lives in this
+    package but the reasoning layer runs in another process, so an HTTP route is what
+    makes it reachable at all (PRD 6.6 "Search-area tool", Milestone 4).
+
+    The result is deliberately three uncertain, ranked polygons with uncalibrated
+    relative weights -- never a single predicted position for a person.
+    """
+    if not t or not last_known_position_id:
+        raise APIError(
+            status_code=400,
+            code="missing_parameter",
+            message="'t' and 'last_known_position_id' query parameters are required",
+        )
+    run = _get_run(store, run_id)
+    try:
+        result = estimate_missing_person_search_area(
+            run, p, t, last_known_position_id, config=DEFAULT_SEARCH_AREA_CONFIG
+        )
+    except SearchAreaInputError as exc:
+        # A bad last-known-position id or an out-of-record query is caller input.
+        raise APIError(status_code=400, code="invalid_search_area_request", message=str(exc))
+    return JSONResponse(status_code=200, content=result)

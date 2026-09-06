@@ -16,6 +16,29 @@ TARGET_CHARS = 900
 OVERLAP_CHARS = 150
 
 
+# Contract convention: an AAR citation is a feature_ref in the reserved `aar` layer, so
+# the critic's validator and any downstream consumer treat chunk IDs and feature IDs
+# under one grammar (contracts/README.md "Feature IDs"; common.schema.json aar_ref).
+# Separators inside the source_id are dots, because the grammar allows one colon only.
+_AAR_REF = re.compile(r"^aar:[A-Za-z0-9_.-]{1,64}$")
+
+
+def _chunk_id(document_id: str, page_number: int, sequence: int, digest: str) -> str:
+    """Compose a citation ID and prove it is citable before it reaches the index.
+
+    `manifest.py` bounds `document_id` so this cannot normally fail; asserting here
+    makes the invariant hold by construction rather than by that arithmetic, because
+    a chunk whose ID fails the grammar would be silently uncitable downstream.
+    """
+    chunk_id = f"aar:{document_id}.p{page_number}.c{sequence}.{digest}"
+    if not _AAR_REF.fullmatch(chunk_id):
+        raise ExtractionError(
+            f"composed chunk id {chunk_id!r} is not a valid aar citation reference; "
+            "shorten the document_id in the source manifest"
+        )
+    return chunk_id
+
+
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -105,7 +128,13 @@ def chunks_for_document(
             ).hexdigest()[:16]
             values = _annotation_values(document, page_number)
             chunks.append(Chunk(
-                chunk_id=f"{document.document_id}:p{page_number}:c{sequence}:{digest}",
+                # Contract convention: an AAR citation is a feature_ref in the
+                # reserved `aar` layer, so the critic's validator and any
+                # downstream consumer can treat chunk IDs and feature IDs under
+                # one grammar (contracts/README.md "Feature IDs";
+                # common.schema.json#/$defs/aar_ref). Separators inside the
+                # source_id are dots, because the grammar allows exactly one colon.
+                chunk_id=_chunk_id(document.document_id, page_number, sequence, digest),
                 text=text,
                 citation=Citation(
                     document_id=document.document_id,

@@ -587,3 +587,31 @@ def test_cli_serve_parser() -> None:
     assert args.subcommand == "serve"
     assert args.host == "0.0.0.0"
     assert args.port == 9000
+
+
+def test_search_area_route_requires_its_parameters(client: TestClient, store: Any) -> None:
+    """The search-area tool is reachable over HTTP -- the LLM layer's only access path."""
+    resp = client.post("/runs", json={"scenario_id": "mini-huc", "mode": "replay"})
+    assert resp.status_code in (200, 202), resp.text
+    run_id = resp.json()["run_id"]
+
+    missing = client.get(f"/runs/{run_id}/search-area", params={"t": "2025-07-04T06:15:00Z"})
+    assert missing.status_code == 400
+    assert missing.json()["error"]["code"] == "missing_parameter"
+
+    unknown_run = client.get(
+        "/runs/no-such-run/search-area",
+        params={"t": "2025-07-04T06:15:00Z", "last_known_position_id": "lkp_test"},
+    )
+    assert unknown_run.status_code == 404
+
+    # An undeclared last-known position is caller error, not a 500: the estimator
+    # rejects it before touching state or geometry. Only the real store reaches that
+    # code -- FakeRun is a double for the other run routes and carries no scenario.
+    if type(store).__name__ != "FakeRunStore":
+        bad_lkp = client.get(
+            f"/runs/{run_id}/search-area",
+            params={"t": "2025-07-04T06:15:00Z", "last_known_position_id": "not-declared"},
+        )
+        assert bad_lkp.status_code == 400, bad_lkp.text
+        assert bad_lkp.json()["error"]["code"] == "invalid_search_area_request"

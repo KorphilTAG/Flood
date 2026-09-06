@@ -109,15 +109,25 @@ def exposure() -> dict[str, gpd.GeoDataFrame]:
 
 
 class FakeExposureStore:
-    """Returns fixture features; asserts the extractor asks with the raster's own CRS."""
+    """Returns fixture features, projected exactly as PostGISExposureStore projects them.
+
+    The column subsetting matters: the real store SELECTs only the id, the registry
+    attribute allow-list, and any explicitly requested join column. A fake that handed
+    back every fixture column would let an extractor bug that never requests an egress
+    `join_field` pass here and then fail against a real database.
+    """
 
     def __init__(self, features: dict[str, gpd.GeoDataFrame]) -> None:
         self.features = features
-        self.calls: list[tuple[str, tuple, str]] = []
+        self.calls: list[tuple[str, tuple, str, tuple]] = []
 
-    def load(self, layer, bounds, bounds_crs, target_crs):
-        self.calls.append((layer.layer_id, tuple(bounds), target_crs))
-        return self.features[layer.layer_id].to_crs(target_crs)
+    def load(self, layer, bounds, bounds_crs, target_crs, extra_columns=()):
+        self.calls.append((layer.layer_id, tuple(bounds), target_crs, tuple(extra_columns)))
+        gdf = self.features[layer.layer_id].to_crs(target_crs)
+        keep = list(dict.fromkeys([layer.id_field, *layer.attributes, *extra_columns]))
+        missing = [c for c in keep if c not in gdf.columns]
+        assert not missing, f"{layer.layer_id}: fixture lacks requested column(s) {missing}"
+        return gdf[[*keep, "geometry"]]
 
 
 def _write_cog(path: Path, depth: np.ndarray, hazard: np.ndarray | None = None) -> Path:
@@ -300,6 +310,32 @@ def test_egress_blocked_reports_first_blocked_time(kerr_scenario, exposure, cogs
     assert camp["route_refs"] == ["road:seg-17"]
     assert camp["status"] == "blocked"
     assert camp["first_blocked_t"] == "2025-07-04T07:15:00Z"
+
+
+def test_egress_join_column_is_requested_from_the_store(kerr_scenario, exposure, cogs):
+    """The routes layer must be fetched with its join column, or egress can never resolve.
+
+    `egress_for_site` is not in the road layer's attribute allow-list, so the store only
+    returns it when the extractor asks for it explicitly.
+    """
+    store = FakeExposureStore(exposure)
+    ImpactExtractor(kerr_scenario, store).extract(
+        run_id="kerr-2025-07-04-test", p=P0, t=T0, current_cog=cogs[T0], projection_cogs={},
+    )
+    requested = {layer_id: extra for layer_id, _, _, extra in store.calls}
+    assert requested["road"] == ("egress_for_site",)
+    assert requested["crossing"] == ()
+
+
+def test_egress_via_unknown_routes_layer_is_a_config_error(kerr_scenario, exposure, cogs):
+    scenario = kerr_scenario.model_copy(deep=True)
+    for layer in scenario.exposure_layers:
+        if layer.egress is not None:
+            layer.egress.routes_layer = "nonexistent"
+    with pytest.raises(ExposureConfigError, match="routes_layer"):
+        ImpactExtractor(scenario, FakeExposureStore(exposure)).extract(
+            run_id="kerr-2025-07-04-test", p=P0, t=T0, current_cog=cogs[T0], projection_cogs={},
+        )
 
 
 def test_egress_unknown_when_no_route_is_configured(kerr_scenario, exposure, cogs):
