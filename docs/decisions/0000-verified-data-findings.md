@@ -33,7 +33,9 @@ Bucket `national-water-model`, public.
 
 - `nwm.20250704/analysis_assim/nwm.tHHz.analysis_assim.channel_rt.tm00.conus.nc`: 24 files per day, about 14 MB each. Variables per feature_id include `streamflow`, `velocity`, `qSfcLatRunoff`, `qBucket`, `nudge`. Also `tm01`, `tm02` lookbacks.
 - `nwm.20250704/short_range/nwm.tHHz.short_range.channel_rt.fNNN.conus.nc`: 18 forecast hours per hourly cycle, same size. Only f001 to f006 are needed for horizons up to 4 hours.
-- Both must be subset to the 646 feature_ids in the HUC. Files are netCDF4 (HDF5), so `xarray` with `h5netcdf` or `netCDF4` is required.
+- Both must be subset to the 646 feature_ids in the HUC.
+- Ingested 2026-09-05 for the Kerr record (2025-07-03T12Z to 2025-07-05T12Z): 49 analysis hours and 49 short-range cycles of 6 leads each (about 4 GB raw, subset to 62 k rows). NWM analysis peak on the Hunt reach is 4476 cms against the USGS peak of 8920 cms at 10:05Z, so NWM carries about half the observed peak: the bias-ratio correction in the engine is not optional for this event.
+- Transient network errors abort a naive download loop; the ingest retries each file and skips it with a warning after three failures. Files are netCDF4 (HDF5), so `xarray` with `h5netcdf` or `netCDF4` is required.
 
 ## USGS gauge data
 

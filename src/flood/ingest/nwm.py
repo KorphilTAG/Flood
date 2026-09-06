@@ -1,6 +1,9 @@
 """NWM download, subsetting, and Parquet persistence."""
 from __future__ import annotations
 
+import logging
+import time
+
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -11,6 +14,8 @@ import pandas as pd
 import xarray as xr
 
 from flood.contracts.models import Scenario
+
+logger = logging.getLogger("flood.ingest.nwm")
 
 GCS_LIST_URL = "https://storage.googleapis.com/storage/v1/b/national-water-model/o"
 GCS_OBJECT_URL = "https://storage.googleapis.com/national-water-model/{name}"
@@ -204,16 +209,26 @@ def download_file(name: str, target_path: Path | str, client: httpx.Client | Non
         close_client = True
 
     try:
-        with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            with open(target_path, "wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=65536):
-                    f.write(chunk)
+        last_exc: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    tmp_path = target_path.with_suffix(target_path.suffix + ".part")
+                    with open(tmp_path, "wb") as f:
+                        for chunk in resp.iter_bytes(chunk_size=65536):
+                            f.write(chunk)
+                    tmp_path.replace(target_path)
+                return target_path
+            except (httpx.TransportError, OSError) as exc:
+                # transient network failures (unreachable network, reset, timeout): retry with backoff
+                last_exc = exc
+                logger.warning("download %s attempt %d failed: %s", name, attempt, exc)
+                time.sleep(2 * attempt)
+        raise RuntimeError(f"download failed after 3 attempts: {name}") from last_exc
     finally:
         if close_client:
             client.close()
-
-    return target_path
 
 
 def load_manifest(manifest_path: Path | str) -> set[str]:
@@ -312,7 +327,11 @@ def ingest_nwm(
             if name in manifest:
                 continue
             raw_path = raw_dir / Path(name).name
-            download_file(name, raw_path, client=client)
+            try:
+                download_file(name, raw_path, client=client)
+            except RuntimeError as exc:
+                logger.warning("skipping %s: %s", name, exc)
+                continue
             sub_df = subset_file(raw_path, feature_ids)
             if not keep_raw:
                 raw_path.unlink(missing_ok=True)
