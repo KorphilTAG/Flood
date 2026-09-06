@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D flood terrain</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.css" integrity="sha512-KIMsMWIdnoG9OwZa+oaIafmbDonqck1UCmq+/zcUi2aaZ97N9QE6TqpTM+n36EO40HGh64hU/375zxtjx7WTyQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="terrain.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.js" integrity="sha512-hoXlvOdSmh58mppUyZHZsscHkR/yXl6zLpTMTNwA6IZ61DpeaCNjosRu1WJ2DeIpkfW5MsJJ9H89zjV4IBGqRw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="error-banner" class="banner hidden" role="alert"><span id="error-message" class="banner-text"></span><button id="btn-dismiss-error" class="banner-close" aria-label="Dismiss error">&times;</button></div>
+    <aside id="panel" aria-label="Map run and legend">
+      <details class="map-key">
+        <summary class="map-key-toggle">Map key</summary>
+      <section class="panel-section">
+        <label class="panel-title run-label" for="run-select">Run</label>
+        <select id="run-select" aria-label="Engine run" disabled>
+          <option>Loading runs…</option>
+        </select>
+      </section>
+      <section class="panel-section" id="legend-section">
+        <h2 class="panel-title" id="legend-title">Depth, mid member</h2>
+        <div id="legend-ramp" class="legend-ramp"></div>
+        <div class="legend-sub">Reach lines: rate of rise (ft/h)</div>
+        <div class="legend-ror"><span class="swatch" style="background:#4dd0e1"></span>falling <span class="swatch" style="background:#7fa8cc"></span>steady <span class="swatch" style="background:#ffe082"></span>+0.98 <span class="swatch" style="background:#ffab40"></span>+3.28 <span class="swatch" style="background:#ff5252"></span>+9.84</div>
+      </section>
+      </details>
+    </aside>
+    <script type="module" src="terrain.js"></script>
+  </body>
+</html>

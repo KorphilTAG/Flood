@@ -1,0 +1,32 @@
+{
+  "name": "USGS 3DEP historical Guadalupe River DEM",
+  "publicationDate": "2021-11-03",
+  "retrieved": "2026-09-05",
+  "bounds": [-99.46, 29.9, -99.08, 30.14],
+  "width": 3800,
+  "height": 2400,
+  "encoding": "uint16 little-endian, decimeters, north-to-south rows, pixel centers",
+  "verticalDatum": "NAVD88",
+  "horizontalDatum": "WGS84 (reprojected from NAD83)",
+  "sourceResolution": "1/3 arc-second (approximately 10 m)",
+  "gridSpacingDegrees": 0.0001,
+  "minMeters": 457.9,
+  "maxMeters": 700.9,
+  "sha256": "16d4e417e2ac712f4b4788a86063e2a26903896ec8ad8ebcc7b253e479ed8a05",
+  "sources": [
+    {
+      "title": "USGS 1/3 Arc Second n30w100 20211103",
+      "publicationDate": "2021-11-03",
+      "downloadURL": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/historical/n30w100/USGS_13_n30w100_20211103.tif",
+      "metaUrl": "https://www.sciencebase.gov/catalog/item/6184ba6fd34ec04fc9c0814a",
+      "vendorMetaUrl": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/elevation/1-3_arc-second/TX_Hurricane_2018_D18_SUPPLEMENTAL_DRRA/USGS_13_n30w100_20211103.xml"
+    },
+    {
+      "title": "USGS 1/3 Arc Second n31w100 20211103",
+      "publicationDate": "2021-11-03",
+      "downloadURL": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/historical/n31w100/USGS_13_n31w100_20211103.tif",
+      "metaUrl": "https://www.sciencebase.gov/catalog/item/6184ba6dd34ec04fc9c08144",
+      "vendorMetaUrl": "https://thor-f5.er.usgs.gov/ngtoc/metadata/waf/elevation/1-3_arc-second/TX_Hurricane_2018_D18_SUPPLEMENTAL_DRRA/USGS_13_n31w100_20211103.xml"
+    }
+  ]
+}
