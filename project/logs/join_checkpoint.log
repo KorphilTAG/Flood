@@ -1,0 +1,126 @@
+
+==============================================================================
+Checkpoint 2 -- join + feature engineering (scope=national)
+==============================================================================
+output: /Users/chiemeka/DNHacks/Flood/project/scripts/../data/processed/training_table.csv
+final shape: 27,814 rows x 60 cols
+grain: tract x disaster (TRACT-level label available -- censusGeoid[:11])
+incidents: 52 -> [4217, 4241, 4250, 4263, 4266, 4268, 4269, 4272, 4273, 4277, 4290, 4317, 4363, 4377, 4402, 4420, 4421, 4440, 4441, 4454, 4466, 4595, 4605, 4606, 4609, 4635, 4649, 4655, 4663, 4665, 4683, 4720, 4730, 4756, 4757, 4781, 4787, 4797, 4807, 4819, 4826, 4871, 4873, 4879, 4892, 4893, 4906, 4909, 4923, 4925, 4932, 4933]
+states: 24
+distinct tracts: 19,793   distinct counties: 556
+
+JOIN-MATCH RATES
+  registrations with a usable censusGeoid: 1,086,988/1,166,753 = 93.2%
+  rows with a feature join (ACS+SVI non-null RPL_THEMES): 99.8%
+  rows with population denominator: 100.0% (rows without one dropped)
+  rows carrying >=1 IA registration: 18,399/27,814 = 66.2%  (the rest are declared-but-no-claim true zeros)
+
+LABEL SUMMARY
+       ia_registrations  label_reg_per_1k  label_ihp_per_capita  label_any_claim
+count      27814.000000      27814.000000          27814.000000     27814.000000
+mean          32.686525          9.638198             25.839055         0.660854
+std          100.133981         28.975583            146.267041         0.473428
+min            0.000000          0.000000              0.000000         0.000000
+25%            0.000000          0.000000              0.000000         0.000000
+50%            3.000000          0.733452              0.102174         1.000000
+75%           18.000000          5.004617              6.906184         1.000000
+max         3013.000000        713.362939           6591.165116         1.000000
+
+ROWS PER INCIDENT
+                rows  tracts_with_claims  mean_reg_per_1k
+disasterNumber                                           
+4217             320                 148         1.290933
+4241             909                 609        24.326590
+4250             774                 376         1.051731
+4263             586                 312        14.007316
+4266             193                  85         6.209459
+4268             151                  87         9.153703
+4269            1579                 561         1.695577
+4272            2198                 414         0.476734
+4273             125                  90        17.194157
+4277             508                 230        38.013677
+4290             390                  77         0.868250
+4317             626                 265         1.343179
+4363             544                 310         1.377409
+4377             341                  97         3.295416
+4402             215                 115         3.085543
+4420             332                 260         6.298976
+4421             140                 115         6.687802
+4440              72                  61         5.665376
+4441             259                 141         2.541711
+4454             335                  67         2.150929
+4466            1376                 520         3.372802
+4595             373                 166         1.671947
+4605             109                  69         1.593058
+4606             257                 134         3.480206
+4609              26                  22        20.584812
+4635             119                  53         1.084834
+4649              62                  46         2.239530
+4655              49                  36         6.578530
+4663             106                 102        36.388658
+4665             424                 420        15.670148
+4683            2381                2023         2.495054
+4720             154                 149        12.887551
+4730               6                   4         5.073807
+4756              95                  78         1.855398
+4757            1540                1493        34.505267
+4781            2849                2809        22.305778
+4787             139                 109         1.630070
+4797             229                 202         5.479041
+4807              24                  24        14.295208
+4819            1677                1494        11.544039
+4826              23                  21         4.726447
+4871             352                 347         6.168705
+4873             285                 263         5.832754
+4879             528                 440         2.808039
+4892             428                 420        26.259453
+4893               5                   5         5.133507
+4906            1091                 493         0.354174
+4909             409                 306         1.704854
+4923             846                 714         9.917722
+4925             531                 393         5.444032
+4932              16                  15        12.751908
+4933             708                 591         9.902565
+
+NULL RATE PER FEATURE COLUMN (%)
+acs_median_hh_income    0.76
+RPL_THEMES              0.24
+RPL_THEME1              0.24
+EP_HBURD                0.22
+irs_returns             0.22
+irs_elderly_share       0.22
+EP_NOVEH                0.22
+EP_CROWD                0.22
+irs_farm_share          0.22
+irs_avg_exemptions      0.22
+EP_SNGPNT               0.22
+irs_avg_total_income    0.22
+irs_avg_agi             0.22
+RPL_THEME4              0.22
+RPL_THEME2              0.22
+EP_MUNIT                0.21
+EP_MOBILE               0.21
+acs_owner_share         0.19
+acs_renter_share        0.19
+EP_POV150               0.18
+EP_UNEMP                0.11
+EP_UNINSUR              0.10
+EP_DISABL               0.10
+EP_NOHSDP               0.01
+rucc_pop_2020           0.00
+rucc_2023               0.00
+acs_pop65_share         0.00
+pop_density             0.00
+hu_density              0.00
+EP_LIMENG               0.00
+EP_GROUPQ               0.00
+EP_MINRTY               0.00
+acs_occupied_units      0.00
+EP_AGE17                0.00
+EP_AGE65                0.00
+RPL_THEME3              0.00
+acs_pop_65plus          0.00
+acs_total_pop           0.00
+acs_renter_occupied     0.00
+acs_owner_occupied      0.00
+daypop_ratio            0.00

@@ -17,6 +17,7 @@ SCHEMA_NAMES = (
     "reach-row",
     "gauge-row",
     "state-response",
+    "impact-json",
 )
 
 

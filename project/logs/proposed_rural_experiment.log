@@ -1,0 +1,123 @@
+==============================================================================
+PROPOSED EXPERIMENT: RURAL UPWEIGHTING -- AWAITING APPROVAL
+==============================================================================
+
+STATUS: DECLINED / NOT RUN. Decision taken 2026-09-06 (Option B): accept the
+nonmetro ranking gap as a documented limitation rather than attempt to
+reweight around it. NOTHING WAS RETRAINED.
+
+Rationale recorded at decision time: reweighting adds no information --
+it amplifies the 3,160 rural rows already held. The real-data lever was
+checked first and found nearly exhausted within the current scope
+(relaxing MIN_COUNTIES>=3 recovers only 15 incidents / 21 county-
+declarations, 8 of them rural). The remaining levers (broadening beyond
+incidentType=='Flood', or pre-FY2015 events) were judged out of scope
+for now. This design is retained, unexecuted, so it can be picked up
+later without redesigning it.
+
+ORIGINAL PROPOSAL FOLLOWS, UNCHANGED.
+This is a retraining action, a larger step than the diagnostic-only
+passes run so far, and it waits for explicit go-ahead.
+
+------------------------------------------------------------------------------
+MOTIVATION
+------------------------------------------------------------------------------
+  Nonmetro ranking (0.238) trails metro (0.347) on the frozen harness,
+  and nonmetro is the deployment target (Kerr County, RUCC 4). The
+  earlier instinct -- pull more URBAN comparison counties -- is now
+  known to be the wrong lever: Section 3 showed urban is already the
+  stronger stratum, so adding urban data addresses the regime that
+  needs no help. The imbalance is stark: 3,160 rural tract-rows against
+  24,654 urban, so ~89% of training mass is metro while 100% of the
+  current deliverable is nonmetro.
+
+------------------------------------------------------------------------------
+WEIGHTING SCHEME
+------------------------------------------------------------------------------
+  Inverse-frequency sample weights by RUCC bucket, applied ONLY to the
+  training side of each leave-one-incident-out split. The held-out
+  incident is never weighted, resampled, or touched -- it is scored
+  exactly as the frozen harness scores it today, so results stay
+  directly comparable to every run already logged.
+
+  For training fold T, bucket b in {metro RUCC 1-3, nonmetro RUCC 4-9}:
+      w_b = |T| / (2 * |T_b|)
+  which equalises the two buckets' total mass. Per-row weight is w of
+  its bucket, normalised to mean 1.
+
+  Implementation note: the winning config is a PyTorch FFN, so this is
+  a weighted MSE (per-sample loss multiplied by w) -- no resampling, no
+  duplicated rows, and no change to the early-stopping logic beyond
+  applying the same weights to the inner validation split.
+
+  Variants worth scoring in the same batch (a small explicit grid, in
+  the style the original spec required -- not a broad search):
+    A. w as above (full inverse-frequency, ~7.8x rural upweight)
+    B. square-root damped: w_b proportional to sqrt(1/|T_b|) (~2.8x)
+    C. finer buckets: one weight per RUCC code 1-9 rather than two
+    D. unweighted control, re-run for a clean same-session baseline
+
+------------------------------------------------------------------------------
+STATED RISK -- THIS IS NOT A CLEAR WIN
+------------------------------------------------------------------------------
+  Upweighting does not add information. There are only 3,160 rural
+  tract-rows, and they come from a limited set of incidents; scheme A
+  multiplies their effective influence roughly 7.8x WITHOUT adding a
+  single new observation. On a subset this small that is a direct
+  invitation to overfit the particular rural tracts present, and the
+  leave-one-incident-out harness will only partly reveal it, because
+  rural tracts recur across folds in ways urban tracts do not.
+
+  Two further specific risks:
+    - Metro degradation. Metro is currently the stronger stratum;
+      downweighting it may cost more metro skill than it buys in
+      nonmetro, leaving the pooled figure flat while both halves get
+      worse in the ways that matter.
+    - Calibration. Test 2's miscalibration is already non-monotonic.
+      Reweighting changes the effective label distribution the model
+      fits, and could deepen the decile-1 inversion rather than help.
+
+  It is entirely possible the honest outcome is 'no scheme beats the
+  unweighted control', in which case the finding is that the nonmetro
+  gap is a data-quantity problem that reweighting cannot fix, and the
+  scope statement stands as written.
+
+------------------------------------------------------------------------------
+ACCEPTANCE CRITERIA -- FIXED BEFORE RUNNING, NOT AFTER
+------------------------------------------------------------------------------
+  Scored on the UNMODIFIED frozen harness (validate.py), reported with
+  the floor-audited within-fold stratum split from Section 6
+  (stratum-specific n >= 30, paired and size-matched).
+
+  ADOPT a variant only if ALL of the following hold:
+    1. rural within-fold Spearman improves by >= +0.03 over 0.2376
+       (a threshold set to exceed the bootstrap noise band, not a
+       decimal-place difference)
+    2. urban within-fold Spearman drops by no more than 0.01 from 0.3468
+    3. pooled harness mean_score does not fall below the current
+       winner's 0.3395
+    4. mean RMSE does not worsen, and the decile-1 calibration
+       inversion from Test 2 does not deepen (decile-1 median outcome
+       must not rise relative to deciles 2-9)
+    5. the improvement survives the Section 6 paired, size-matched
+       test at p < 0.05 -- not just a higher mean
+
+  REJECT and report the negative result if any criterion fails. Do not
+  relax the thresholds after seeing results.
+
+------------------------------------------------------------------------------
+WHAT WOULD BE TOUCHED IF APPROVED
+------------------------------------------------------------------------------
+  Written : logs/validation_runs.jsonl (4 new runs, A-D)
+            logs/rural_experiment_results.log
+  Modified: model/train.py (adds a weighted-loss variant)
+  NOT touched unless a variant passes AND the user says so:
+            model/validate.py (frozen), model/best.json,
+            output/demographic_risk.geojson, logs/model_tests.log
+
+  Estimated cost: 4 variants x 52 folds of FFN training, ~10 workers
+  in parallel, on the order of 30-45 minutes.
+
+==============================================================================
+AWAITING EXPLICIT APPROVAL BEFORE ANY OF THE ABOVE IS RUN.
+==============================================================================

@@ -18,6 +18,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from flood.cli_run import register as register_run; register_run(sub)
     from flood.cli_serve import register as register_serve; register_serve(sub)
     from flood.cli_skill import register as register_skill; register_skill(sub)
+    from flood.cli_impacts import register as register_impacts; register_impacts(sub)
 
     args = parser.parse_args(argv)
     if hasattr(args, "func"):

@@ -22,3 +22,17 @@ tests/fixtures/mini_huc/out/
 
 # Manually acquired source PDFs, verified source manifests, and generated local AAR indices.
 # (covered by data/* above, called out here for clarity)
+
+# The demographic risk model's data. Its own rule on purpose: the `data/*`
+# above is anchored to the repo root and does NOT match project/data, unlike
+# the bare `data/` it replaced.
+#
+# The raw pulls (240 MB) stay out -- four of their six sources are pinned in
+# the URL, so re-fetching is deterministic. The three derived tables are
+# committed gzipped because the OpenFEMA query is not date-pinned and they are
+# the only reproducibility record for the scores in
+# project/logs/final_summary.log. Loaders prefer a local .csv and fall back.
+project/data/*
+!project/data/processed/
+project/data/processed/*
+!project/data/processed/*.csv.gz

@@ -139,6 +139,11 @@
       "layer_id": "crossing",
       "name": "Low-water crossings",
       "source": "../data/exposure/kerr_low_water_crossings.gpkg",
+      "postgis": {
+        "schema": "flood_exposure",
+        "table": "kerr_2025_07_04_crossing",
+        "geometry_column": "geometry"
+      },
       "id_field": "crossing_id",
       "geometry": "point",
       "attributes": [
@@ -153,6 +158,11 @@
       "layer_id": "road",
       "name": "Road segments",
       "source": "../data/exposure/kerr_roads.gpkg",
+      "postgis": {
+        "schema": "flood_exposure",
+        "table": "kerr_2025_07_04_road",
+        "geometry_column": "geometry"
+      },
       "id_field": "segment_id",
       "geometry": "line",
       "attributes": [
@@ -167,6 +177,11 @@
       "layer_id": "structure",
       "name": "Building footprints",
       "source": "../data/exposure/kerr_buildings.gpkg",
+      "postgis": {
+        "schema": "flood_exposure",
+        "table": "kerr_2025_07_04_structure",
+        "geometry_column": "geometry"
+      },
       "id_field": "osm_id",
       "geometry": "polygon",
       "attributes": [
@@ -180,6 +195,11 @@
       "layer_id": "site",
       "name": "Occupancy sites",
       "source": "../data/exposure/kerr_sites.gpkg",
+      "postgis": {
+        "schema": "flood_exposure",
+        "table": "kerr_2025_07_04_site",
+        "geometry_column": "geometry"
+      },
       "id_field": "site_id",
       "geometry": "polygon",
       "attributes": [

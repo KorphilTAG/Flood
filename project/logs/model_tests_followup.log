@@ -1,0 +1,434 @@
+PROPOSED SCOPE STATEMENT -- FOR USER APPROVAL OR EDIT, NOT ASSERTED
+
+  This model produces a RELATIVE ordering of demographic vulnerability
+  within a single flood incident. It is not validated to produce
+  magnitudes: predictions run roughly 4x low overall and the
+  calibration curve is non-monotonic, so no post-hoc wrapper repaired
+  it (Test 2). Measured like-for-like inside each fold, ranking skill
+  is MODERATELY BETTER in metro tracts (Spearman 0.347, RUCC 1-3) than
+  in nonmetro tracts (0.238, RUCC 4-9) -- the opposite of what a
+  pooled comparison appears to show, and worth stating plainly because
+  Kerr County is RUCC 4 and therefore sits in the WEAKER regime for
+  ranking, not the stronger one. The severe underprediction of dense
+  high-impact urban tracts (Harris County, DR-4781: predicted under 1
+  per 1,000 against an actual 186-265) is a magnitude failure, not a
+  ranking failure, and is a KNOWN AND CURRENT LIMITATION of a model
+  with no hydrological input rather than a defect to chase. Proposed
+  scope: use for within-incident relative shading anywhere in the
+  RUCC 1-9 range; do not use any output as a magnitude, a cross-
+  incident comparison, or a flood-extent claim.
+
+  STATUS: proposed. Not adopted, not applied to any output, and not
+  reflected in best.json or the GeoJSON. Edit or reject as you see fit.
+
+  WHAT THIS FOLLOW-UP DID NOT FIND: urbanicity does NOT unify the three
+  findings. It explains the Test 5 correlations (section 1, confirmed),
+  but Test 1's weak folds are explained by low label variance rather
+  than urbanicity (section 2), and the ranking-skill profile runs
+  opposite to the urban-underperformance hypothesis (section 3). The
+  density-gated hybrid was tested and is NOT recommended (section 4).
+
+==============================================================================
+FOLLOW-UP DIAGNOSTIC -- VERDICTS
+==============================================================================
+  Section 1: Is EP_NOINT / EP_ASIAN a density proxy? -> CONFIRMED
+  Section 2: Does severity or urbanicity explain Test 1's weak folds? -> CONFIRMED
+  Section 3: Stratified re-evaluation: urban vs rural -> NOT SUPPORTED
+  Section 4: Test 7 revisited with the density lens -> NOT SUPPORTED
+  Section 5: Proposed scope statement -> FLAGGED FOR REVIEW
+
+No retraining was performed. logs/model_tests.log is unmodified.
+The single new harness evaluation is 'hybrid_density_gate', logged as a
+candidate only.
+
+==============================================================================
+SECTION 1: Is EP_NOINT / EP_ASIAN a density proxy?  [CONFIRMED]
+==============================================================================
+Raw variable-to-variable Spearman correlations (NOT against model
+predictions). One row per tract, deduplicated across incidents.
+n tracts = 19,793
+
+ variable  vs_pop_density  vs_rucc_2023
+ EP_NOINT         -0.2069       +0.3493
+ EP_ASIAN         +0.4444       -0.4044
+EP_MINRTY         +0.5092       -0.3808
+
+Reading: rucc_2023 runs 1 (most metropolitan) to 9 (most rural), so a
+POSITIVE correlation with RUCC means the variable rises as areas get
+more rural; a NEGATIVE correlation with pop_density means the same.
+
+STRONGLY TIED TO URBANICITY (|rho| >= 0.30 on either axis):
+  EP_NOINT: vs pop_density -0.2069, vs RUCC +0.3493
+  EP_ASIAN: vs pop_density +0.4444, vs RUCC -0.4044
+  EP_MINRTY: vs pop_density +0.5092, vs RUCC -0.3808
+
+CANDIDATE EXPLANATION (not a resolution): the Test 5
+correlations may be mediated through urbanicity rather than being
+independent equity signals or a direct registration-access
+artifact. EP_NOINT in particular tracks rurality, and rural
+tracts are where this model has most of its training mass.
+
+WHAT THIS TEST DOES NOT SETTLE: density being a confound does not
+tell you whether the residual association is a documented equity
+pattern or an artifact worth chasing. That judgment is the
+user's and is deliberately left open here.
+
+==============================================================================
+SECTION 2: Does severity or urbanicity explain Test 1's weak folds?  [CONFIRMED]
+==============================================================================
+Incidents with n_test >= 30 (noise-exclusion rule from Test 1): 46 of 52 folds
+
+ incident  n_test  spearman  median_rucc  label_iqr  label_std  label_mean  frac_zero
+     4756      95     0.030        3.000      1.270      3.842       1.855      0.179
+     4635     119     0.109        3.000      0.809      2.993       1.085      0.555
+     4421     140     0.121        2.000      4.119     26.673       6.688      0.179
+     4250     774     0.173        1.000      0.901      3.731       1.052      0.514
+     4797     229     0.176        4.000      6.081      8.861       5.479      0.118
+     4871     352     0.191        2.000      6.992      7.245       6.169      0.014
+     4377     341     0.208        2.000      0.748     14.015       3.295      0.716
+     4663     106     0.226        7.000     31.100     54.607      36.389      0.038
+     4781    2849     0.235        1.000     22.056     31.665      22.306      0.014
+     4605     109     0.235        3.000      1.429      3.404       1.593      0.367
+     4269    1579     0.254        1.000      0.810      7.634       1.696      0.645
+     4272    2198     0.256        1.000      0.000      3.638       0.477      0.812
+     4787     139     0.256        3.000      1.264      3.324       1.630      0.216
+     4290     390     0.257        1.000      0.000      4.754       0.868      0.803
+     4454     335     0.261        2.000      0.000     10.021       2.151      0.800
+     4906    1091     0.263        1.000      0.274      1.287       0.354      0.548
+     4655      49     0.266        3.000      1.847     14.458       6.579      0.265
+     4273     125     0.274        3.000      9.155     42.462      17.194      0.280
+     4720     154     0.278        7.000     12.849     19.187      12.888      0.032
+     4241     909     0.287        2.000     29.647     41.179      24.327      0.330
+     4649      62     0.290        1.000      2.554      4.723       2.240      0.258
+     4363     544     0.293        2.000      1.090      4.742       1.377      0.430
+     4402     215     0.297        2.000      1.467      7.462       3.086      0.465
+     4595     373     0.313        4.000      0.715      4.557       1.672      0.555
+     4217     320     0.330        1.000      0.990      4.015       1.291      0.537
+     4277     508     0.347        2.000     36.280     93.942      38.014      0.547
+     4909     409     0.347        1.000      1.290      4.769       1.705      0.252
+     4466    1376     0.354        1.000      0.749     16.707       3.373      0.622
+     4441     259     0.354        2.000      0.791     11.319       2.542      0.456
+     4317     626     0.361        1.500      0.658      5.758       1.343      0.577
+     4933     708     0.377        1.000      5.823     22.405       9.903      0.165
+     4266     193     0.389        2.000      1.263     32.046       6.209      0.560
+     4420     332     0.395        2.000      2.352     21.337       6.299      0.217
+     4879     528     0.406        1.000      0.873      8.405       2.808      0.167
+     4263     586     0.435        2.500     11.383     31.611      14.007      0.468
+     4683    2381     0.464        1.000      2.036      6.529       2.495      0.150
+     4923     846     0.473        1.000      4.921     22.192       9.918      0.156
+     4925     531     0.493        3.000      1.802     18.911       5.444      0.260
+     4606     257     0.498        2.000      2.229      9.755       3.480      0.479
+     4873     285     0.522        2.000      7.029      7.604       5.833      0.077
+     4268     151     0.607        6.000      9.520     16.293       9.154      0.424
+     4440      72     0.665        2.000      5.450      8.798       5.665      0.153
+     4757    1540     0.671        1.000     24.764     62.317      34.505      0.031
+     4892     428     0.671        1.000     31.059     34.132      26.259      0.019
+     4665     424     0.694        1.000     13.239     24.470      15.670      0.009
+     4819    1677     0.781        1.000     12.878     23.498      11.544      0.109
+
+CORRELATIONS AGAINST PER-INCIDENT SPEARMAN
+  vs median RUCC        : -0.2714
+  vs label IQR          : +0.3244
+  vs label std          : +0.3784
+  vs fraction zero-label: -0.2571
+
+SIGNAL-VARIANCE PATTERN: incidents with more spread in the label
+score higher. A weak rank correlation on a near-constant label is
+a fundamentally different failure from a weak rank correlation on
+a widely-spread one -- in the first case there is little true
+ordering to recover. The weak folds are largely the former.
+
+RUCC shows no strong per-incident relationship (-0.271).
+The two candidate explanations are NOT merged: the data supports
+the label-variance account and does not support an incident-level
+urbanicity account.
+
+==============================================================================
+SECTION 3: Stratified re-evaluation: urban vs rural  [NOT SUPPORTED]
+==============================================================================
+Threshold: USDA's own metro/nonmetro line, RUCC 1-3 vs 4-9. Chosen
+because it is a published definition rather than a cut fitted to this
+data, so the split cannot be accused of being tuned to flatter the
+result. Existing frozen out-of-fold predictions; NO retraining.
+
+A) POOLED ACROSS ALL INCIDENTS
+                     group     n  spearman    rmse  mean_label  mean_pred
+   URBAN (RUCC 1-3, metro) 24654    0.0321 29.0093      9.5186     2.2887
+RURAL (RUCC 4-9, nonmetro)  3160    0.1173 28.1094     10.5713     2.5930
+       POOLED (all tracts) 27814    0.0589 28.9084      9.6382     2.3233
+
+   *** These pooled figures are NOT comparable to the harness score.
+   Pooling 52 incidents with very different label scales
+   collapses rank agreement; the harness scores WITHIN each fold and
+   then averages. Use the pooled table only for the urban/rural
+   CONTRAST, never as an absolute skill number.
+
+B) WITHIN-FOLD, THEN AVERAGED (directly comparable to the harness)
+stratum  folds  tracts  mean_spearman  mean_rmse
+  rural     29    2923         0.2376    19.3775
+  urban     44   24589         0.3468    16.2462
+
+rural minus pooled: +0.0583 spearman
+urban minus pooled: -0.0269 spearman
+
+   within-fold rural 0.2376 vs urban 0.3468 (rural minus urban: -0.1091)
+
+*** THE TWO MEASURES DISAGREE, AND THE POOLED ONE IS WRONG.
+
+  Pooled  : rural 0.1173 > urban 0.0321  -> looks rural-skewed
+  In-fold : rural 0.2376 < urban 0.3468  -> actually urban-skewed
+
+  The pooled view is an artifact. Ranking 27,814 tracts drawn
+  from 52 incidents against one another mixes events whose label
+  scales differ by orders of magnitude, so most of the pooled
+  'disagreement' is between-incident scale, not within-incident
+  ordering. The harness never does this: it scores inside a fold
+  and averages. The within-fold split is the like-for-like
+  measurement and it says the model ranks BETTER in metro tracts
+  (0.3468) than nonmetro (0.2376).
+
+  HYPOTHESIS AS STATED IS NOT SUPPORTED: skill is not
+  concentrated in the nonmetro regime. Note the uncomfortable
+  corollary -- Kerr County is RUCC 4, i.e. nonmetro, which is the
+  WEAKER ranking regime, not the stronger one.
+
+  Urbanicity therefore does NOT provide a single root cause
+  uniting Tests 1, 2 and 5. It explains the Test 5 correlations
+  (section 1) but not the ranking skill profile.
+
+NOTE on magnitude: urban mean label 9.52 vs urban mean
+prediction 2.29 -- the underprediction that Test 2's
+decile 1 exposed is concentrated here.
+
+==============================================================================
+SECTION 4: Test 7 revisited with the density lens  [NOT SUPPORTED]
+==============================================================================
+The 10 maximum-disagreement rows, now with density and which model
+was actually closer to the observed label.
+
+ disasterNumber  tract_fips  pop_density  rucc_2023 regime  pred_model  pred_nn  label_reg_per_1k  err_model  err_nn closer
+           4781 48113007829     3580.100      1.000  urban       0.555  153.877            44.675     44.120 109.202  model
+           4781 48201240600     3599.172      1.000  urban       0.538   49.600            29.313     28.776  20.287    knn
+           4268 28119950200      613.508      8.000  rural      15.179    0.000            16.443      1.265  16.443  model
+           4781 48113016805     4908.283      1.000  urban       0.599   61.097             8.868      8.269  52.228  model
+           4781 48257050601       73.383      1.000  urban       0.609   56.471            11.521     10.912  44.949  model
+           4781 48121020116      449.225      1.000  urban       0.642   69.687             4.888      4.246  64.799  model
+           4909 15009030100        5.429      3.000  urban       9.824    0.000            56.701     46.877  56.701  model
+           4781 48113012208     6521.109      1.000  urban       0.608   49.600            18.001     17.393  31.599  model
+           4781 48201331604     6125.869      1.000  urban       8.754    0.000            33.875     25.122  33.875  model
+           4263 22017024303      689.421      2.000  urban       8.548    0.000             1.512      7.036   1.512    knn
+
+ROW BY ROW
+  48113007829 density=   3580.1 RUCC=1 (urban) -> model closer (|err| model=44.12 knn=109.20)
+  48201240600 density=   3599.2 RUCC=1 (urban) -> knn closer (|err| model=28.78 knn=20.29)
+  28119950200 density=    613.5 RUCC=8 (rural) -> model closer (|err| model=1.26 knn=16.44)
+  48113016805 density=   4908.3 RUCC=1 (urban) -> model closer (|err| model=8.27 knn=52.23)
+  48257050601 density=     73.4 RUCC=1 (urban) -> model closer (|err| model=10.91 knn=44.95)
+  48121020116 density=    449.2 RUCC=1 (urban) -> model closer (|err| model=4.25 knn=64.80)
+  15009030100 density=      5.4 RUCC=3 (urban) -> model closer (|err| model=46.88 knn=56.70)
+  48113012208 density=   6521.1 RUCC=1 (urban) -> model closer (|err| model=17.39 knn=31.60)
+  48201331604 density=   6125.9 RUCC=1 (urban) -> model closer (|err| model=25.12 knn=33.88)
+  22017024303 density=    689.4 RUCC=2 (urban) -> knn closer (|err| model=7.04 knn=1.51)
+
+PATTERN TEST -- 'model wins rural, k-NN wins urban':
+  urban rows: 9, of which k-NN closer: 2
+  rural rows: 1, of which model closer: 1
+  consistent rows: 3/10 = 30%  -> DOES NOT HOLD
+
+
+Pattern too weak to justify proposing a switching rule.
+No hybrid validated.
+
+==============================================================================
+SECTION 5: Proposed scope statement  [FLAGGED FOR REVIEW]
+==============================================================================
+PROPOSED SCOPE STATEMENT -- FOR USER APPROVAL OR EDIT, NOT ASSERTED
+
+  This model produces a RELATIVE ordering of demographic vulnerability
+  within a single flood incident. It is not validated to produce
+  magnitudes: predictions run roughly 4x low overall and the
+  calibration curve is non-monotonic, so no post-hoc wrapper repaired
+  it (Test 2). Measured like-for-like inside each fold, ranking skill
+  is MODERATELY BETTER in metro tracts (Spearman 0.347, RUCC 1-3) than
+  in nonmetro tracts (0.238, RUCC 4-9) -- the opposite of what a
+  pooled comparison appears to show, and worth stating plainly because
+  Kerr County is RUCC 4 and therefore sits in the WEAKER regime for
+  ranking, not the stronger one. The severe underprediction of dense
+  high-impact urban tracts (Harris County, DR-4781: predicted under 1
+  per 1,000 against an actual 186-265) is a magnitude failure, not a
+  ranking failure, and is a KNOWN AND CURRENT LIMITATION of a model
+  with no hydrological input rather than a defect to chase. Proposed
+  scope: use for within-incident relative shading anywhere in the
+  RUCC 1-9 range; do not use any output as a magnitude, a cross-
+  incident comparison, or a flood-extent claim.
+
+  STATUS: proposed. Not adopted, not applied to any output, and not
+  reflected in best.json or the GeoJSON. Edit or reject as you see fit.
+
+  WHAT THIS FOLLOW-UP DID NOT FIND: urbanicity does NOT unify the three
+  findings. It explains the Test 5 correlations (section 1, confirmed),
+  but Test 1's weak folds are explained by low label variance rather
+  than urbanicity (section 2), and the ranking-skill profile runs
+  opposite to the urban-underperformance hypothesis (section 3). The
+  density-gated hybrid was tested and is NOT recommended (section 4).
+
+
+==============================================================================
+FOLLOW-UP II
+==============================================================================
+  Section 6: Small-fold-noise audit of the rural stratum -> CONFIRMED
+  Section 7: Finalized scope statement -> FLAGGED FOR REVIEW
+
+==============================================================================
+SECTION 6: Small-fold-noise audit [CONFIRMED]
+==============================================================================
+AUDIT TARGET: is rural 0.2376 vs urban 0.3468 an artifact of small
+rural sample sizes, the way the pooled comparison was an artifact of
+mixed label scales?
+
+FIRST, A CORRECTION TO THE PREMISE OF THIS AUDIT.
+The n>=30 floor was ALREADY applied to the stratum-specific tract
+count in Section 3, not to the whole-fold count (run_followup.py:190:
+  `if len(part) >= 30 and ...`, where `part` is the stratum subset).
+So 0.2376 was already a floor-applied figure. Reported plainly rather
+than presenting a re-derivation of the same number as a new finding.
+
+PER-FOLD RURAL TRACT COUNTS (the number that governs trustworthiness)
+ incident  n_stratum  spearman
+     4655          5     0.600
+     4893          5    -0.400
+     4454          5     0.100
+     4807          5    -0.600
+     4730          6     0.841
+     4605          7     0.036
+     4609          8     0.071
+     4787         10     0.709
+     4377         11     0.442
+     4932         16     0.074
+     4819         16     0.432
+     4871         22     0.338
+     4826         23     0.018
+     4440         23     0.373
+     4421         24    -0.259
+     4635         24     0.540
+     4756         27    -0.206
+     4879         37     0.397
+     4290         39     0.510
+     4909         43     0.169
+     4683         47    -0.244
+     4273         52     0.244
+     4906         52     0.230
+     4402         57     0.347
+     4933         63    -0.009
+     4217         64     0.227
+     4269         72     0.362
+     4363         75     0.313
+     4441         76     0.176
+     4272         79     0.226
+     4277         86     0.266
+     4420         90     0.036
+     4873         93     0.331
+     4266         94     0.465
+     4923        100     0.094
+     4663        106     0.226
+     4720        114    -0.146
+     4797        122     0.141
+     4268        123     0.659
+     4241        147     0.237
+     4263        151     0.404
+     4317        167     0.261
+     4250        187     0.130
+     4925        187     0.193
+     4781        195     0.241
+     4595        205     0.407
+
+  rural folds clearing n>=30: 29 of 46   (min 5, median 54, max 205)
+  urban folds clearing n>=30: 44 of 47   (min 18, median 330, max 2654)
+
+SIDE BY SIDE, NO-FLOOR vs FLOOR-APPLIED
+  rural  no floor: 0.2174 (46 folds)   floor>=30: 0.2376 (29 folds)
+  urban  no floor: 0.3463 (47 folds)   floor>=30: 0.3468 (44 folds)
+
+FLOOR SENSITIVITY
+  floor>= 30: rural 0.2376 (n=29)   urban 0.3468 (n=44)   gap -0.1091
+  floor>= 50: rural 0.2424 (n=25)   urban 0.3478 (n=41)   gap -0.1054
+  floor>=100: rural 0.2372 (n=12)   urban 0.3651 (n=36)   gap -0.1279
+
+BOOTSTRAP 95% CI OF EACH STRATUM MEAN (10k fold-resamples)
+  rural: mean=0.2376  CI=[0.1705, 0.3018]  folds=29
+  urban: mean=0.3468  CI=[0.2976, 0.3991]  folds=44
+
+DECISIVE CONTROL -- PAIRED AND SIZE-MATCHED
+Both strata compared inside the SAME incident (controls for event
+difficulty), each subsampled to the smaller of the two counts
+(controls for the sample-size difference outright).
+
+  paired folds: 27
+  rural  (size-matched): 0.2224
+  urban  (size-matched): 0.3416
+  gap: -0.1192
+  Wilcoxon signed-rank p = 0.0187
+  folds where urban beat rural: 19/27
+
+VERDICT: THE FINDING SURVIVES. Stated as plainly as the earlier
+reversal was:
+
+  Unlike the pooled-vs-within-fold comparison, this one does NOT
+  move under scrutiny. The gap is stable across floors 30/50/100
+  (-0.109 / -0.105 / -0.128), survives matching urban down to
+  rural sample sizes, and is significant in a paired test that
+  holds the incident constant (p=0.0187). Rural ranking really is
+  weaker; it is not a small-sample illusion.
+
+  HONEST LIMIT: the bootstrap CIs do touch (rural [0.170, 0.302] vs
+  urban [0.298, 0.399]), so this is a solid but not
+  overwhelming separation. The paired test is the stronger
+  evidence because it removes between-incident variance.
+
+==============================================================================
+SECTION 7: Finalized scope statement [FLAGGED FOR REVIEW]
+==============================================================================
+FINALIZED SCOPE STATEMENT -- FOR USER APPROVAL OR EDIT, NOT ASSERTED
+(reordering and emphasis pass over the Section 5 draft; every caveat
+ from that version is retained, none added, none removed)
+
+  DEPLOYMENT RELEVANCE FIRST. The published output covers Kerr County,
+  which is RUCC 4 -- nonmetro. Measured like-for-like inside each fold,
+  this model ranks WORSE in nonmetro tracts (0.238 Spearman) than in
+  metro tracts (0.347). The deployment target therefore sits in the
+  model's WEAKER stratum, not its stronger one. That gap survived a
+  paired, size-matched audit holding the incident constant
+  (p=0.0187) and is stable across sample-size floors of
+  30, 50 and 100 rural tracts per fold, so it is a real property of the
+  model and not a small-sample illusion. Anyone reading the Kerr
+  heatmap should know they are looking at the model's weaker regime.
+
+  MAGNITUDES ARE NOT VALIDATED. Predictions run roughly 4x low overall,
+  and the calibration curve is non-monotonic -- decile 1 carries the
+  second-highest median outcome of any decile -- so isotonic regression
+  could not repair it and was rejected for making RMSE worse
+  (18.455 -> 21.469, Test 2). The severe underprediction of dense
+  high-impact urban tracts (Harris County, DR-4781: under 1 per 1,000
+  predicted against an actual 186-265) is a MAGNITUDE failure, not a
+  ranking failure, and is a KNOWN AND CURRENT LIMITATION of a model
+  with no hydrological input -- not a defect to chase.
+
+  PROPOSED SCOPE. Use for within-incident RELATIVE shading across the
+  full RUCC 1-9 range, with the nonmetro weakness above stated at the
+  point of use. Do not use any output as a magnitude, as a cross-
+  incident comparison, or as a flood-extent claim. Tracts failing the
+  Test 6 completeness rule emit "insufficient data" rather than a
+  number and must not be rendered as zero.
+
+  STATUS: ADOPTED by the user on 2026-09-06 (Option B). This is now the
+  project's stated scope for the demographic risk model. The rural-
+  upweighting experiment was considered and DECLINED in the same
+  decision: the nonmetro gap is accepted and documented as a known
+  limitation rather than chased. See logs/proposed_rural_experiment.log.
+
+  WHAT THE DIAGNOSTIC DID NOT FIND: urbanicity does NOT unify Tests 1,
+  2 and 5. It explains the Test 5 correlations (Section 1, confirmed);
+  Test 1's weak folds are explained by low label variance instead
+  (Section 2); and the ranking-skill profile runs opposite to the
+  urban-underperformance hypothesis (Section 3). The density-gated
+  hybrid was tested and is NOT recommended (Section 4).
