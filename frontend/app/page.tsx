@@ -389,7 +389,7 @@ export default function Home() {
   }
   function exportLog() {
     download(
-      'lifeline-simulation-decision-log.json',
+      'lira-simulation-decision-log.json',
       JSON.stringify(
         {
           label: 'UI MOCK — NOT AN OPERATIONAL RECORD',
@@ -420,7 +420,7 @@ export default function Home() {
             <span className="wordmark-icon">
               <Activity size={20} />
             </span>
-            <strong>LifeLine</strong>
+            <strong>L.I.R.A.</strong>
             <span>DECISION SUPPORT</span>
           </div>
           <TabsList className="main-navigation" aria-label="Workspace">
@@ -749,7 +749,7 @@ export default function Home() {
               style={{ zoom: Number(phoneZoom) / 100 }}
             >
               <div className="phone-status">
-                <strong>LifeLine / FIELD</strong>
+                <strong>L.I.R.A. / FIELD</strong>
                 <span>{time(clock)} CDT · Exercise</span>
               </div>
               <div
