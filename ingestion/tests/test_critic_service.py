@@ -238,3 +238,86 @@ def test_run_critique_wraps_generator_failure_in_critique_generation_error():
         run_critique(CritiqueRequest(plan="plan"), _settings(), search=search, generator=generator)
 
     assert len(generator.calls) == 1
+
+
+def _invalid_response(response_schema, chunk_id: str, invalid_token: str):
+    # A fabricated structured `chunk_ids` entry cannot pass through
+    # `response_schema` at all -- its `chunk_ids` fields are Enum-typed to
+    # exactly the retrieved chunk IDs (schemas.py), so constructing an
+    # invalid *structured* citation here would raise before the validator
+    # ever runs. The independently-checkable failure mode this fake exercises
+    # instead is an out-of-set bracketed inline citation in free text, which
+    # the schema Enum cannot constrain (spec.md Problem, gap 2).
+    return response_schema(
+        objections=[
+            {
+                "text": f"As in [{invalid_token}] officials waited too long.",
+                "chunk_ids": [chunk_id],
+            }
+        ],
+        alternatives=[],
+    )
+
+
+def test_run_critique_regenerates_once_on_invalid_then_valid_response():
+    hits = [_hit("chunk-1")]
+    search = RecordingSearch(hits=hits)
+    calls: list[dict] = []
+
+    def generator_call(plan, situation, decision_point, chunks, response_schema, *, settings, correction=None):
+        calls.append({"correction": correction})
+        if len(calls) == 1:
+            return _invalid_response(response_schema, "chunk-1", "WIM-2015-07")
+        return _valid_structured_response(response_schema, "chunk-1")
+
+    request = CritiqueRequest(plan="Shelter in place near the river.")
+    response = run_critique(request, _settings(), search=search, generator=generator_call)
+
+    assert len(calls) == 2
+    assert calls[0]["correction"] is None
+    assert calls[1]["correction"] is not None
+    assert "WIM-2015-07" in calls[1]["correction"]
+    all_cited_ids = {
+        cid for item in (*response.objections, *response.alternatives) for cid in item.chunk_ids
+    }
+    assert all_cited_ids == {"chunk-1"}
+    for item in (*response.objections, *response.alternatives):
+        assert "WIM-2015-07" not in item.text
+
+
+def test_run_critique_raises_after_exhausting_regeneration_attempts():
+    hits = [_hit("chunk-1")]
+    search = RecordingSearch(hits=hits)
+    calls: list[dict] = []
+
+    def generator_call(plan, situation, decision_point, chunks, response_schema, *, settings, correction=None):
+        calls.append({"correction": correction})
+        return _invalid_response(response_schema, "chunk-1", "WIM-2015-07")
+
+    settings = _settings()
+    request = CritiqueRequest(plan="Shelter in place near the river.")
+
+    with pytest.raises(CritiqueGenerationError):
+        run_critique(request, settings, search=search, generator=generator_call)
+
+    assert len(calls) == settings.max_regeneration_attempts + 1
+
+
+def test_run_critique_honors_max_regeneration_attempts_setting_of_zero():
+    hits = [_hit("chunk-1")]
+    search = RecordingSearch(hits=hits)
+    calls: list[dict] = []
+
+    def generator_call(plan, situation, decision_point, chunks, response_schema, *, settings, correction=None):
+        calls.append({"correction": correction})
+        return _invalid_response(response_schema, "chunk-1", "WIM-2015-07")
+
+    settings = Settings(
+        aar_index_dir="unused/for/fakes", openai_model="test-model", max_regeneration_attempts=0
+    )
+    request = CritiqueRequest(plan="Shelter in place near the river.")
+
+    with pytest.raises(CritiqueGenerationError):
+        run_critique(request, settings, search=search, generator=generator_call)
+
+    assert len(calls) == 1
