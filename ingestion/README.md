@@ -407,6 +407,100 @@ but no network call or API key is exercised by importing or constructing it.
 Only `python -m critic_eval run` itself (not exercised by any test) makes a
 real critic call and a real RAGAS judge call.
 
+## IPAWS alert query tool (`ingestion/critic/ipaws.py`)
+
+`critic/ipaws.py` is a standalone, deterministic query capability over
+FEMA's public IPAWS Archive ArcGIS REST table
+(`https://gis.fema.gov/arcgis/rest/services/FEMA/IPAWS_Archive/MapServer/1`,
+`IPAWS_ARCHIVE_EVENTS`) -- historical CAP alert records (who alerted whom,
+when, with what message). It exists so a human curator can pull real alert
+facts for a date range and area, to fold into the critic's existing
+free-text `situation` input (or hold as a manual curation note) when
+grounding a claim about actual alert timing/content during a historical
+event. It is **not** wired into `POST /v1/critique`'s automatic retrieval
+flow, is never bound to a chat model, and is never invoked through a
+LangChain `AgentExecutor` or any other tool-calling loop -- it is called
+directly, the same way `aar.search.search_index` is called as a direct
+Python function today.
+
+**Why this is separate from `lib/langchain_tools.py`'s `ArcGISFeatureServerTool`:**
+`IPAWS_ARCHIVE_EVENTS` is a non-spatial ArcGIS *table* (no geometry field at
+all), while `ArcGISFeatureServerTool`/`lib/geo.py::query_arcgis_feature_server`
+require a `boundary_geojson` polygon and unconditionally send
+`geometry`/`geometryType`/`spatialRel` -- a design built for TxDOT roads and
+USGS NHD flowlines, both true spatial layers. This tool instead filters by
+`sent` (a date range) and `info_area_areadesc`/`info_event` (free-text
+substrings), which the existing tool has no parameter for.
+
+**Safety: structured inputs only, never a raw `where` string.** Every
+parameter that reaches the ArcGIS SQL `where` clause is one of: a
+strictly-validated `YYYY-MM-DD` date, a substring matched via `LIKE` with
+embedded single quotes escaped by doubling (`'` -> `''`), or a fixed status
+string. No function in this module accepts a raw, pass-through SQL `where`
+string -- the only way to affect the query is through
+`start_date`/`end_date`/`area_contains`/`event_type`/`status`.
+
+**Fixed field set.** `query_ipaws_alerts` always returns exactly this
+ten-field subset per record, never the full raw schema (which also carries
+`xmlns`, `restriction`, `resource_*`, `references_*`, and other fields not
+useful for grounding a timing/content claim):
+
+`identifier`, `sent` (ISO-8601 UTC, converted from the raw ArcGIS
+epoch-millisecond integer), `status`, `msgtype`, `info_event`,
+`info_headline`, `info_description`, `info_instruction`,
+`info_sendername`, `info_area_areadesc`.
+
+**Default `status="Actual"`.** By default, only CAP `status="Actual"`
+records are returned, excluding `Test`/`Exercise`/`Draft`/`System` records
+from being mistaken for real alerts. Pass `status=None` (or `--status none`
+on the CLI) to omit the status filter entirely and see every status value.
+
+**Pagination and the 2000-row cap.** This service's confirmed
+`maxRecordCount` is 2000 rows per request. `query_ipaws_alerts` paginates
+with `resultOffset`/`resultRecordCount`, continuing only while the previous
+page returned a full page's worth of rows, and stops once a page returns
+fewer rows than requested or the caller's `max_records` cap (default 2000)
+is reached -- so a wide query does not silently truncate without the
+caller knowing, and a careless wide query cannot pull the whole table in
+one call.
+
+**How a curator invokes this** -- directly, never through an agent loop,
+never automatically called by `POST /v1/critique`:
+
+```bash
+cd ingestion
+python -m scripts.query_ipaws_alerts --start 2025-07-03 --end 2025-07-05 --area Kerr
+python -m scripts.query_ipaws_alerts --start 2025-07-03 --end 2025-07-05 --area Kerr --count-only
+```
+
+or, in a shell/notebook, `critic.ipaws.IpawsAlertQueryTool().invoke({...})`
+directly.
+
+**Retention-accuracy caveat.** This service's own `serviceDescription`
+metadata claims "latest 6-Month" retention with a 24-hour publish delay.
+That claim has been directly verified as **stale/inaccurate**: `MIN(sent)`
+across the table is 2020-11-01, and `MAX(sent)` was 2026-09-04 when checked
+on 2026-09-05 -- a multi-year rolling archive, not six months. Do not treat
+the "6-month" claim as fact, and do not treat this as a guaranteed
+permanent archive either -- FEMA could change or prune retention at any
+time without notice, and this tool's output should not be relied on as a
+durable system of record.
+
+### Tests
+
+```bash
+cd ingestion
+pytest tests/test_ipaws.py
+```
+
+Mocks every HTTP call -- no real network access and no API key required.
+Covers `build_where_clause`'s date validation and quote-escaping,
+default/omitted `status` filtering, `query_ipaws_alerts`'s field projection
+and `sent` conversion, pagination across two pages and the `max_records`
+cap, `count_ipaws_alerts`'s shared `where`-clause construction, and
+`IpawsAlertQueryTool`'s input-validation gate (an invalid/missing required
+field raises before any network call).
+
 ## Manual follow-up (not performed by this feature)
 
 These items are genuinely manual per PRD 6.1. No script in this directory
