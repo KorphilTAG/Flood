@@ -1,0 +1,7 @@
+{
+  "best_run_id": "mlp_h16_d0.5_wd0.01",
+  "best_mean_spearman": 0.3395177379640135,
+  "tripwire_fired": true,
+  "tripwire_note": "fired at config 9 of a fixed 12-config grid; remaining pre-declared configs scored in a completeness pass",
+  "n_configs_scored": 17
+}
