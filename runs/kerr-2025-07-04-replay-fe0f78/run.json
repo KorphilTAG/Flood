@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "run_id": "kerr-2025-07-04-replay-fe0f78",
+  "created_at": "2026-09-06T05:51:43Z",
+  "engine_version": "0.1.0",
+  "mode": "replay",
+  "scenario": {
+    "scenario_id": "kerr-2025-07-04",
+    "name": "Guadalupe River flash flood, Kerr County, Texas, 4 July 2025",
+    "huc8": [
+      "12100201"
+    ],
+    "fim_version": "4.9.9.0",
+    "record_start": "2025-07-03T12:00:00Z",
+    "record_end": "2025-07-05T12:00:00Z",
+    "timezone": "America/Chicago"
+  },
+  "grid": {
+    "crs": "EPSG:5070",
+    "resolution_m": 10.0,
+    "width": 6600,
+    "height": 2600,
+    "transform": [
+      10.0,
+      0.0,
+      -340000.0,
+      0.0,
+      -10.0,
+      790000.0
+    ],
+    "bounds": [
+      -340000.0,
+      764000.0,
+      -274000.0,
+      790000.0
+    ]
+  },
+  "time": {
+    "step_minutes": 5,
+    "max_horizon_minutes": 360
+  },
+  "members": [
+    "low",
+    "mid",
+    "high"
+  ],
+  "forcing": {
+    "config": {
+      "sources": [
+        {
+          "type": "usgs_continuous",
+          "availability_latency_min": 5,
+          "sites": [
+            "08165300",
+            "08165500",
+            "08166000",
+            "08166140",
+            "08166200",
+            "08166250",
+            "08167000"
+          ],
+          "parameters": [
+            "00060",
+            "00065"
+          ]
+        },
+        {
+          "type": "nwm_analysis_assim",
+          "availability_latency_min": 60
+        },
+        {
+          "type": "nwm_short_range",
+          "availability_latency_min": 90,
+          "max_lead_hours": 6
+        }
+      ],
+      "state_estimation": {
+        "bias_correction": "nearest_gauge_ratio",
+        "use_junction_inferences": true,
+        "ratio_clamp": [
+          0.2,
+          10.0
+        ]
+      },
+      "boundary_forecast": {
+        "method": "trend_relax",
+        "members": {
+          "low": 0.5,
+          "mid": 1.0,
+          "high": 1.5
+        },
+        "relax_minutes": 60,
+        "trend_window_minutes": 30
+      },
+      "routing": {
+        "method": "muskingum_cunge",
+        "dt_minutes": 5.0
+      },
+      "roughness": {
+        "manning_n_scale": 0.5,
+        "gauge_calibration": true
+      },
+      "scenario_overrides": [
+        {
+          "type": "gauge_outage",
+          "gauge_ref": "gauge:08166140",
+          "from": "2025-07-04T09:00:00Z"
+        },
+        {
+          "type": "gauge_outage",
+          "gauge_ref": "gauge:08166250",
+          "from": "2025-07-04T10:30:00Z"
+        }
+      ]
+    },
+    "config_hash": "sha256:fe0f782617d42e46517760412a9eef869e08630e71084b85af6387e78815de3d"
+  },
+  "products": {
+    "raster": "products/p={p}/t={t}/depth.tif",
+    "reaches": "products/p={p}/t={t}/reaches.parquet",
+    "time_to_exceedance": "products/p={p}/time_to_exceedance.tif",
+    "gauges": "products/p={p}/gauges.parquet",
+    "hindsight_raster": "hindsight/t={t}/depth.tif",
+    "hindsight_reaches": "hindsight/t={t}/reaches.parquet"
+  },
+  "limitations": [
+    "HAND underpredicts on stream order 1 and 2.",
+    "Velocity is a Manning proxy from reach discharge over wetted area, not a measurement.",
+    "Debris dams, bridge backwater, and channel avulsion are not modelled.",
+    "Rating curves use a uniform Manning n of 0.06.",
+    "Rating-curve conveyance is calibrated per gauge from observed discharge and gauge height and interpolated along the river (Manning n scale 0.5 elsewhere); the fitted scales are in calibration.json in the run directory.",
+    "South Fork Guadalupe at the Hunt confluence is inferred by mass balance, not observed."
+  ]
+}

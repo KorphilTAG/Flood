@@ -137,6 +137,33 @@ def test_render_overlay_png_dry_array(mini_cube: HandCube):
     assert np.all(arr[:, :, 3] == 0)
 
 
+def test_render_overlay_png_smooth_edges(mini_cube: HandCube):
+    """smooth=True anti-aliases the wet edge; the default stays binary and paints the same cells."""
+    grid = mini_cube.grid
+    depth = np.zeros((grid.height, grid.width), dtype=np.float32)
+    depth[:, : grid.width // 2] = 1.0  # wet left half, dry right half
+
+    crisp, _ = render_overlay_png(depth, grid, max_px=512)
+    soft, bounds_soft = render_overlay_png(depth, grid, max_px=512, smooth=True)
+    a_crisp = np.array(Image.open(io.BytesIO(crisp)))[:, :, 3]
+    a_soft = np.array(Image.open(io.BytesIO(soft)))[:, :, 3]
+
+    assert set(np.unique(a_crisp).tolist()) <= {0, 255}
+    partial = (a_soft > 0) & (a_soft < 255)
+    assert partial.any(), "smooth mode should carry partial alpha along the wet edge"
+    # Well inside the wet half is opaque, well inside the dry half is transparent, in both modes.
+    h, w = a_soft.shape
+    assert a_soft[h // 2, w // 8] == 255 and a_crisp[h // 2, w // 8] == 255
+    assert a_soft[h // 2, w - w // 8] == 0 and a_crisp[h // 2, w - w // 8] == 0
+    # On the middle row the only wet/dry boundary is the vertical one, and bilinear resampling
+    # puts the depth >= MIN_DEPTH_M crossing up to one source cell past the last wet cell centre.
+    cell_px = int(np.ceil(w / grid.width))
+    cols = np.flatnonzero(partial[h // 2])
+    assert cols.size > 0
+    assert cols.min() >= w // 2 - cell_px - 2 and cols.max() <= w // 2 + cell_px + 2
+    assert len(bounds_soft) == 4
+
+
 def test_cli_map(tmp_path: Path, mini_data_dir: Path):
     from flood.cli import main
 

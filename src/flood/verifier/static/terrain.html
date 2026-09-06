@@ -112,12 +112,14 @@
       </div>
       <div class="control-row">
         <label for="res-select">Overlay px</label>
-        <select id="res-select">
-          <option value="2048">2048</option>
-          <option value="4096" selected>4096</option>
+        <select id="res-select" title="Overlay width in pixels; 6144 is close to the 10 m grid over the corridor">
+          <option value="4096">4096</option>
+          <option value="6144" selected>6144</option>
+          <option value="8192">8192</option>
         </select>
       </div>
       <div class="control-row toggles-row">
+        <label class="checkbox-label" title="Serve the nearest prewarmed product; never start a computation"><input type="checkbox" id="precomputed-toggle" checked /> Prewarmed only</label>
         <label class="checkbox-label"><input type="checkbox" id="reaches-toggle" checked /> Reaches by rate of rise</label>
         <label class="checkbox-label"><input type="checkbox" id="gauges-toggle" checked /> Gauge readouts</label>
       </div>

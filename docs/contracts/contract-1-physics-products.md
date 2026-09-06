@@ -126,6 +126,8 @@ Schema: [forcing-config.schema.json](schemas/forcing-config.schema.json). The sc
 | `boundary_forecast.relax_minutes` | Time constant over which the continued trend decays to a plateau. |
 | `routing.method`, `routing.dt_minutes` | `none` or `muskingum_cunge`; time step. |
 | `roughness.manning_n_scale` | Multiplier applied to hydrotable discharge as a crude roughness sensitivity. |
+
+Roughness also accepts `gauge_calibration` (boolean, default false): fit a Manning n scale per scenario gauge from observed discharge and gauge height and interpolate it along the river, with `manning_n_scale` as the default elsewhere (decision 0010). Stalled gauges are declared with `scenario_overrides` entries of type `gauge_outage`.
 | `scenario_overrides[]` | `gauge_outage` (gauge_ref, from, optional to) drops observations from `p` onward; `reach_scale` (reach_ref, factor, from, to) scales inflow on a reach for what-if runs. |
 
 ## 9. Engine API
@@ -144,7 +146,7 @@ Served by the FastAPI process. Paths are relative to the API root. All responses
 | `GET /runs/{run_id}/gauges?p=` | Gauge table as JSON array | |
 | `GET /runs/{run_id}/raster?p=&t=` | The `depth.tif` | `application/octet-stream`, range requests supported |
 | `GET /runs/{run_id}/tte?p=` | The `time_to_exceedance.tif` | |
-| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048` | Colour-ramped PNG in EPSG:3857 for map clients | Response headers `X-Bounds-3857: xmin,ymin,xmax,ymax` and `X-Bounds-4326: west,south,east,north` (degrees, for `Rectangle.fromDegrees` style placement). Transparent where dry or nodata. `p=hindsight` allowed. |
+| `GET /runs/{run_id}/overlay.png?p=&t=&band=depth_mid&max_px=2048&smooth=0` | Colour-ramped PNG in EPSG:3857 for map clients | Response headers `X-Bounds-3857: xmin,ymin,xmax,ymax` and `X-Bounds-4326: west,south,east,north` (degrees, for `Rectangle.fromDegrees` style placement). Transparent where dry or nodata. `p=hindsight` allowed. `max_px` clamped to 256..8192. `smooth=1` renders for draping on 3D terrain: bilinear at every scale, no dilation, anti-aliased wet edge; wet cells are the same either way. |
 | `GET /runs/{run_id}/hindsight?t=` | State response for the truth run | Equivalent to `state?p=hindsight&t=` |
 | `GET /runs/{run_id}/network.geojson` | Reach flowlines and gauge points as WGS84 GeoJSON | Static per run. Reach features: id = NWM `feature_id`, `kind: "reach"`, network columns as properties. Gauged reaches add a `kind: "gauge"` Point (id `gauge:<site>`) at the flowline midpoint. Used by the terrain view to join the reach and gauge tables to geometry. |
 

@@ -14,7 +14,7 @@ export const API = {
   state: '/runs/{run}/state?p=&t=',
   reaches: '/runs/{run}/reaches?p=&t=',
   gauges: '/runs/{run}/gauges?p=',
-  overlay: '/runs/{run}/overlay.png?p=&t=&band=&max_px=',
+  overlay: '/runs/{run}/overlay.png?p=&t=&band=&max_px=&smooth=',
   network: '/runs/{run}/network.geojson',
   clock: '/clock',
   clockWs: '/clock/ws',
@@ -91,13 +91,14 @@ export const state = {
   lagMin: 60,
 
   band: 'depth_mid',
-  maxPx: 4096,
+  maxPx: 6144, // about 12 m per pixel over the corridor, close to the 10 m grid
   opacity: 0.85,
   basemap: 'dark',
   exaggeration: 1.6,
   showHillshade: true,
   showReaches: true,
   showGauges: true,
+  precomputedOnly: true, // nearest prewarmed product; never start a computation
 
   clock: null,
   t: null,
@@ -120,6 +121,7 @@ let styleReady = false;
 const pendingMapOps = [];
 let mapLoaded = false;
 let pendingFit = false;
+let userMoved = false;
 let clockWs = null;
 let debounceTimer = null;
 let controller = null;
@@ -226,7 +228,9 @@ async function fetchJson(url, signal, init = {}) {
 }
 
 async function fetchOverlay(p, t, signal) {
-  const url = apiUrl(API.overlay, { p, t, band: state.band, max_px: state.maxPx });
+  // smooth=1: bilinear at every scale, no dilation, anti-aliased edge. Draped on terrain the
+  // verifier's cell-crisp rendering reads as blocks, and its one-pixel dilation as square rims.
+  const url = apiUrl(API.overlay, { p, t, band: state.band, max_px: state.maxPx, smooth: 1, precomputed: state.precomputedOnly ? 1 : null });
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw await apiError(resp);
   // The API sends the extent both in degrees (X-Bounds-4326) and Web Mercator (X-Bounds-3857).
@@ -280,8 +284,14 @@ function updateReadout(p, t, st) {
     iso
       ? `${formatDateTime(iso, 'UTC')}Z<span class="local">${escapeHtml(formatDateTime(iso, tz, true))}</span>`
       : '-';
-  if (pEl) pEl.innerHTML = p === 'hindsight' ? 'hindsight' : stamp(p);
-  if (tEl) tEl.innerHTML = stamp(t);
+  // Served values, with the requested ones alongside when the server snapped to a
+  // prewarmed neighbour, so the readout never silently disagrees with the clock.
+  const req = st && st.requested ? st.requested : null;
+  const servedP = p === 'hindsight' ? 'hindsight' : p;
+  const askedP = req && req.p !== servedP ? ` <span class="local">asked ${escapeHtml(req.p === 'hindsight' ? 'hindsight' : formatDateTime(req.p, 'UTC') + 'Z')}</span>` : '';
+  const askedT = req && req.t !== t ? ` <span class="local">asked ${escapeHtml(formatDateTime(req.t, 'UTC'))}Z</span>` : '';
+  if (pEl) pEl.innerHTML = (p === 'hindsight' ? 'hindsight' : stamp(p)) + askedP;
+  if (tEl) tEl.innerHTML = stamp(t) + askedT;
   if (cEl) {
     if (st && st.compute_ms) {
       const parts = [];
@@ -443,7 +453,14 @@ function initMap() {
     pitch: 60,
     bearing: -15,
     maxPitch: 80,
+    // The terrain tiles stop at zoom 15 and draped layers stop rendering past the terrain
+    // source's maxzoom; 15 already shows a 10 m grid cell at several screen pixels.
+    maxZoom: 15,
     attributionControl: { compact: true },
+  });
+  // A camera move by hand before the first overlay arrives cancels the automatic corridor fit.
+  map.on('movestart', (e) => {
+    if (e && e.originalEvent) userMoved = true;
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -717,6 +734,7 @@ function flyToSite(site) {
     showError(`Gauge ${site} is not in this run's network`);
     return;
   }
+  userMoved = true;
   map.flyTo({ center: g.marker.getLngLat(), zoom: 13.4, pitch: 66, bearing: -28, duration: 1600 });
 }
 
@@ -729,7 +747,7 @@ function bucketKey() {
   const { p, t } = deriveCutoffAndValid(state.t, state.mode, state.horizonMin, state.lagMin);
   if (!p || !t) return null;
   const pKey = p === 'hindsight' ? p : floor5(p);
-  return `${state.runId}|${state.mode}|${pKey}|${round5(t)}|${state.band}|${state.maxPx}`;
+  return `${state.runId}|${state.mode}|${pKey}|${round5(t)}|${state.band}|${state.maxPx}|${state.precomputedOnly}`;
 }
 
 export function scheduleRefresh() {
@@ -758,20 +776,20 @@ async function refresh() {
   updateReadout(p, t, null);
   setBusy(true, state.lastState ? 'computing' : 'routing the record (up to a minute)');
   try {
-    const st = await fetchJson(apiUrl(API.state, { p, t }), signal);
+    const st = await fetchJson(apiUrl(API.state, { p, t, precomputed: state.precomputedOnly ? 1 : null }), signal);
     state.lastState = st;
     updateReadout(st.p == null ? 'hindsight' : st.p, st.t, st);
 
     const [overlay, reaches] = await Promise.all([
       fetchOverlay(p, t, signal),
-      fetchJson(apiUrl(API.reaches, { p, t }), signal),
+      fetchJson(apiUrl(API.reaches, { p, t, precomputed: state.precomputedOnly ? 1 : null }), signal),
     ]);
     applyOverlay(overlay);
     applyReaches(reaches);
 
     const gaugeKey = `${state.runId}|${p === 'hindsight' ? p : floor5(p)}`;
     if (gaugeKey !== state.lastGaugeKey) {
-      const rows = await fetchJson(apiUrl(API.gauges, { p }), signal);
+      const rows = await fetchJson(apiUrl(API.gauges, { p, precomputed: state.precomputedOnly ? 1 : null }), signal);
       indexGauges(rows);
       state.lastGaugeKey = gaugeKey;
     }
@@ -779,7 +797,7 @@ async function refresh() {
 
     if (!fitted) {
       fitted = true;
-      fitCorridor();
+      if (!userMoved) fitCorridor();
     }
     hideError();
   } catch (err) {
@@ -1082,4 +1100,16 @@ async function boot() {
 
 if (typeof document !== 'undefined') {
   boot();
+}
+
+// Prewarmed-only mode: the server snaps to the nearest prewarmed product and never computes.
+{
+  const el = document.getElementById('precomputed-toggle');
+  if (el) {
+    el.checked = state.precomputedOnly;
+    el.addEventListener('change', (e) => {
+      state.precomputedOnly = e.target.checked;
+      forceRefresh();
+    });
+  }
 }

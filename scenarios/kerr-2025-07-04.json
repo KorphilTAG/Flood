@@ -130,9 +130,13 @@
       "dt_minutes": 5
     },
     "roughness": {
-      "manning_n_scale": 0.5
+      "manning_n_scale": 0.5,
+      "gauge_calibration": true
     },
-    "scenario_overrides": []
+    "scenario_overrides": [
+      { "type": "gauge_outage", "gauge_ref": "gauge:08166140", "from": "2025-07-04T09:00:00Z" },
+      { "type": "gauge_outage", "gauge_ref": "gauge:08166250", "from": "2025-07-04T10:30:00Z" }
+    ]
   },
   "exposure_layers": [
     {

@@ -13,14 +13,16 @@ Performance notes (fix-up after wave 2 measurements on the reference corridor, 1
 from __future__ import annotations
 
 import dataclasses
-from typing import Mapping
+from typing import Any, Mapping
 import numpy as np
 
 from flood.engine.cube import HandCube
 from flood.engine.rating import apply_n_scale, hyd_radius, stage_from_q, wet_area
 from flood.interfaces import BranchArrays, MemberFields, MIN_DEPTH_M
 
-_WINDOW_CACHE: dict[int, tuple[slice, slice] | None] = {}
+# Keyed by the REM array's identity and storing the array itself, so a recycled id()
+# after garbage collection cannot return another branch's window.
+_WINDOW_CACHE: dict[int, tuple[np.ndarray, tuple[slice, slice] | None]] = {}
 
 
 def branch_window(branch: BranchArrays) -> tuple[slice, slice] | None:
@@ -29,20 +31,34 @@ def branch_window(branch: BranchArrays) -> tuple[slice, slice] | None:
     Cached by the identity of the REM array, which is stable for a loaded cube.
     """
     key = id(branch.rem)
-    if key in _WINDOW_CACHE:
-        return _WINDOW_CACHE[key]
+    entry = _WINDOW_CACHE.get(key)
+    if entry is not None and entry[0] is branch.rem:
+        return entry[1]
     covered = ~np.isnan(branch.rem)
     rows = np.flatnonzero(covered.any(axis=1))
     cols = np.flatnonzero(covered.any(axis=0))
     win = None if rows.size == 0 else (slice(int(rows[0]), int(rows[-1]) + 1), slice(int(cols[0]), int(cols[-1]) + 1))
-    _WINDOW_CACHE[key] = win
+    _WINDOW_CACHE[key] = (branch.rem, win)
     return win
+
+
+def branch_scale(n_scale: Any, branch_id: int) -> float | np.ndarray:
+    """Resolve a scalar scale or a per-branch field (anything with scale_for_branch) for one branch."""
+    if hasattr(n_scale, "scale_for_branch"):
+        return n_scale.scale_for_branch(branch_id)
+    if isinstance(n_scale, Mapping):
+        return n_scale.get(int(branch_id), 1.0)
+    return float(n_scale)
+
+
+def _is_unit_scale(s: float | np.ndarray) -> bool:
+    return np.ndim(s) == 0 and float(s) == 1.0
 
 
 def map_member(
     cube: HandCube,
     q_by_feature: Mapping[int, float],
-    n_scale: float = 1.0,
+    n_scale: Any = 1.0,
     with_velocity: bool = True,
 ) -> MemberFields:
     """Map reach discharges to depth and proxy velocity fields on the cube grid.
@@ -66,8 +82,9 @@ def map_member(
         rs, cs = win
 
         rt = branch.rating
-        if n_scale != 1.0:
-            rt = dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
+        s = branch_scale(n_scale, branch.branch_id)
+        if not _is_unit_scale(s):
+            rt = dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, s))
 
         n_catch = len(rt.feature_id)
         stage_lut = np.full(n_catch, np.nan, dtype=np.float32)

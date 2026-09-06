@@ -22,11 +22,19 @@ def run_n_scale(run: Any) -> float:
     return float(roughness.get("manning_n_scale", 1.0))
 
 
-def scaled_rating(rt: Any, n_scale: float) -> Any:
-    """Rating table with discharge divided by the Manning n scale, as mapping and routing use it."""
-    if rt is None or n_scale == 1.0:
+def scaled_rating(rt: Any, n_scale: Any) -> Any:
+    """Rating table with discharge divided by the Manning n scale (scalar or per-catchment array)."""
+    if rt is None or (np.ndim(n_scale) == 0 and float(n_scale) == 1.0):
         return rt
     return dataclasses.replace(rt, q_cms=apply_n_scale(rt.q_cms, n_scale))
+
+
+def run_branch_scale(run: Any, branch_id: int) -> Any:
+    """Scale for one branch: the run's calibrated field when present, else the scalar."""
+    field = getattr(run, "n_scale_field", None)
+    if field is not None:
+        return field.scale_for_branch(branch_id)
+    return run_n_scale(run)
 
 
 def build_reaches(
@@ -48,7 +56,6 @@ def build_reaches(
         p_dt = p_dt.astimezone(timezone.utc)
 
     cube = run.cube
-    n_scale = run_n_scale(run)
     network = cube.network
     aoi_network = network[network["in_aoi"].astype(bool)].copy()
     aoi_network = aoi_network.sort_values(by="feature_id").reset_index(drop=True)
@@ -76,7 +83,7 @@ def build_reaches(
 
     for branch in cube.branches:
         bid = branch.branch_id
-        rt = scaled_rating(branch.rating, n_scale)
+        rt = scaled_rating(branch.rating, run_branch_scale(run, bid))
         mask = (pref_branches == bid) & (rep_cidxs >= 0)
         indices = np.where(mask)[0]
         if len(indices) == 0:
@@ -111,7 +118,7 @@ def build_reaches(
 
         for branch in cube.branches:
             bid = branch.branch_id
-            rt = scaled_rating(branch.rating, n_scale)
+            rt = scaled_rating(branch.rating, run_branch_scale(run, bid))
             mask = (pref_branches == bid) & (rep_cidxs >= 0)
             indices = np.where(mask)[0]
             if len(indices) == 0:
@@ -230,7 +237,7 @@ def build_gauges(
             pref_branch = int(net_match["preferred_branch"].iloc[0])
             rep_cidx = int(net_match["representative_cidx"].iloc[0])
             try:
-                rt = scaled_rating(run.cube.branch(pref_branch).rating, run_n_scale(run)) if rep_cidx >= 0 else None
+                rt = scaled_rating(run.cube.branch(pref_branch).rating, run_branch_scale(run, pref_branch)) if rep_cidx >= 0 else None
             except KeyError:
                 rt = None
         else:

@@ -6,8 +6,15 @@ import numpy as np
 from flood.interfaces import RatingTable
 
 
-def apply_n_scale(q: np.ndarray | float, s: float) -> np.ndarray | float:
-    """Apply Manning's n roughness scale: returns q / s."""
+def apply_n_scale(q: np.ndarray | float, s: float | np.ndarray) -> np.ndarray | float:
+    """Apply the Manning n scale: returns q / s.
+
+    s may be a scalar or a per-catchment array (one value per table row), in which case it
+    divides each row of a [n, k] discharge table.
+    """
+    s_arr = np.asarray(s)
+    if s_arr.ndim == 1 and np.ndim(q) == 2:
+        return q / s_arr[:, None].astype(q.dtype if hasattr(q, "dtype") else np.float32)
     return q / s
 
 
